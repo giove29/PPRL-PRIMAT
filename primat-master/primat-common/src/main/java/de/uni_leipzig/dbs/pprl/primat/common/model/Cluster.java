@@ -50,7 +50,7 @@ public class Cluster implements Linkable {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "cluster_seq")
-	@SequenceGenerator(name = "cluster_seq", sequenceName = "hibernate_sequence", allocationSize = 50)
+	@SequenceGenerator(name = "cluster_seq", sequenceName = "cluster_seq", allocationSize = 50)
 	private int id;
 
 	@OneToOne
