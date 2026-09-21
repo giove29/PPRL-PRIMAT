@@ -19,6 +19,7 @@ import de.uni_leipzig.dbs.pprl.primat.common.model.ClusterFactory;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.lu.database.DbConnection;
 import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.LinkedPair;
+import de.uni_leipzig.dbs.pprl.primat.lu.utils.ProgressListener;
 
 /**
  * Variante persistente di {@link LinkTableBuilder}: oltre a chiudere
@@ -53,7 +54,7 @@ public final class PersistentLinkTableBuilder {
 	 *         storico persistito (nuovo, esteso o risultato di una fusione)
 	 */
 	public static Set<Cluster> build(Collection<LinkedPair<Record>> linkedPairs, Collection<Record> allRecords,
-			ClusterFactory clusterFactory, DbConnection dbConnection) {
+			ClusterFactory clusterFactory, DbConnection dbConnection, ProgressListener progress) {
 		final Map<Record, Record> parent = new IdentityHashMap<>();
 		for (final Record record : allRecords) {
 			parent.put(record, record);
@@ -72,16 +73,21 @@ public final class PersistentLinkTableBuilder {
 		}
 
 		final Set<Cluster> linkTable = new HashSet<>();
+		final long totalComponents = componentsByRoot.size();
 		final List<List<Record>> newComponents = new ArrayList<>();
+		long reconciled = 0;
 		for (final List<Record> component : componentsByRoot.values()) {
 			if (hasExistingCluster(component)) {
 				linkTable.add(reconcile(component, clusterFactory, dbConnection));
+				progress.update(++reconciled, totalComponents);
 			}
 			else {
 				newComponents.add(component);
 			}
 		}
-		linkTable.addAll(dbConnection.persistNewClusters(clusterFactory, newComponents));
+		final long alreadyDone = reconciled;
+		linkTable.addAll(dbConnection.persistNewClusters(clusterFactory, newComponents,
+			(done, total) -> progress.update(alreadyDone + done, totalComponents)));
 		return linkTable;
 	}
 

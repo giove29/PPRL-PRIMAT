@@ -30,6 +30,7 @@ import de.uni_leipzig.dbs.pprl.primat.common.extraction.lsh.JaccardLshKeyGenerat
 import de.uni_leipzig.dbs.pprl.primat.common.extraction.lsh.LshKeyGenerator;
 import de.uni_leipzig.dbs.pprl.primat.lu.database.DbConnection;
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.affinity_propagation.data_structures.ApConfig;
+import de.uni_leipzig.dbs.pprl.primat.lu.utils.ConsoleProgressBar;
 import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.BlockingEvaluationResult;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.MultiSourceLinkage.LinkageOutcome;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.ClusteringMethod;
@@ -129,9 +130,16 @@ public class LinkageUnitOrchestrator {
 		final ClusteringMethod method = config.getClusteringMethod();
 		System.out.println("=== Strategia scelta: " + method + " ===");
 
-		final long runStartNanos = System.nanoTime();
 		final MultiSourceLinkage linkage = new MultiSourceLinkage();
 		final boolean persistenceEnabled = config.isPersistenceEnabled();
+		final long[] persistenceStartNanos = new long[1];
+		linkage.setClusteringProgress(new ConsoleProgressBar("Clustering"));
+		linkage.setPersistenceProgress(new ConsoleProgressBar("Scrittura DB"));
+		linkage.setOnClusteringFinished(() -> {
+			System.out.println("=== Fase di clustering completata in "
+					+ linkage.getLastClusteringElapsedNanos() / 1_000_000 + " ms ===");
+			persistenceStartNanos[0] = System.nanoTime();
+		});
 		final DbConnection dbConnection = config.getDbConnection(); // null se persistenceEnabled == false
 		final Map<Party, Collection<Record>> effectiveInput = persistenceEnabled ? buildPersistentInput(input) : input;
 		final LinkageOutcome outcome;
@@ -171,15 +179,11 @@ public class LinkageUnitOrchestrator {
 				break;
 			}
 		}
-		final long runElapsedMillis = (System.nanoTime() - runStartNanos) / 1_000_000;
-		final long clusteringElapsedMillis = linkage.getLastClusteringElapsedNanos() / 1_000_000;
-		final long persistenceElapsedMillis = runElapsedMillis - clusteringElapsedMillis;
-		System.out.println("=== Fase di clustering completata in " + clusteringElapsedMillis + " ms ===");
-		System.out.println("=== Fase di persistenza/salvataggio completata in " + persistenceElapsedMillis + " ms ===");
-
 		if (!persistenceEnabled) {
-			ClusterCsvWriter.write(outcome, config.getCsvOutputPath());
+			ClusterCsvWriter.write(outcome, config.getCsvOutputPath(), new ConsoleProgressBar("Scrittura CSV"));
 		}
+		final long persistenceElapsedMillis = (System.nanoTime() - persistenceStartNanos[0]) / 1_000_000;
+		System.out.println("=== Fase di persistenza/salvataggio completata in " + persistenceElapsedMillis + " ms ===");
 
 		printOutcome(method.name(), outcome, linkage.getLastBlockingEvaluation());
 		printLinkTable(outcome.getLinkTable());

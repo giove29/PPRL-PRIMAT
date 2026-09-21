@@ -9,6 +9,7 @@ import java.util.List;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.LinkedPair;
 import de.uni_leipzig.dbs.pprl.primat.lu.model.MultiPartiteSimilarityGraph;
+import de.uni_leipzig.dbs.pprl.primat.lu.utils.ProgressListener;
 
 /**
  * Strategia di clustering che opera direttamente su un grafo di similarità
@@ -18,4 +19,8 @@ import de.uni_leipzig.dbs.pprl.primat.lu.model.MultiPartiteSimilarityGraph;
 public interface MultipartiteClusteringStrategy {
 
 	List<LinkedPair<Record>> cluster(MultiPartiteSimilarityGraph graph);
+
+	/** Riceve l'avanzamento (archi elaborati / archi totali) durante {@link #cluster}. */
+	default void setProgressListener(ProgressListener listener) {
+	}
 }

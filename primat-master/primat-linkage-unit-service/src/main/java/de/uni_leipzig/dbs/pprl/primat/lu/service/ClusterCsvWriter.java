@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import de.uni_leipzig.dbs.pprl.primat.lu.utils.ProgressListener;
+
 import de.uni_leipzig.dbs.pprl.primat.common.model.Cluster;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.MultiSourceLinkage.LinkageOutcome;
@@ -34,12 +36,16 @@ public final class ClusterCsvWriter {
 	 * @param outputPath percorso del CSV da (sovra)scrivere
 	 * @throws IOException se la scrittura del file fallisce
 	 */
-	public static void write(LinkageOutcome outcome, String outputPath) throws IOException {
+	public static void write(LinkageOutcome outcome, String outputPath, ProgressListener progress) throws IOException {
 		final Path path = Path.of(outputPath);
+		final long total = outcome.getLinkTable().size();
+		long written = 0;
+		progress.update(0, total);
 		try (BufferedWriter writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
 			writer.write("cluster_id,party,record_id,global_id");
 			writer.newLine();
 			for (final Cluster cluster : outcome.getLinkTable()) {
+				progress.update(written++, total);
 				for (final Record record : cluster.getRecords()) {
 					writer.write(cluster.getId() + "," + csvField(record.getParty().getName()) + ","
 							+ csvField(record.getId()) + "," + csvField(record.getGlobalId()));
@@ -47,6 +53,7 @@ public final class ClusterCsvWriter {
 				}
 			}
 		}
+		progress.update(total, total);
 		System.out.println("=== Link Table scritta su CSV (persistence disabled): " + path.toAbsolutePath() + " ===");
 	}
 

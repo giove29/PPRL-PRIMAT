@@ -38,6 +38,7 @@ import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.IdAttribute;
 import de.uni_leipzig.dbs.pprl.primat.common.utils.HomogenPair;
 import de.uni_leipzig.dbs.pprl.primat.common.utils.Pair;
 import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.LinkedPair;
+import de.uni_leipzig.dbs.pprl.primat.lu.utils.ProgressListener;
 
 
 /**
@@ -401,7 +402,8 @@ public class DbConnection {
 	 * preesistente).
 	 */
 	public Cluster persistNewCluster(ClusterFactory clusterFactory, Collection<Record> records) {
-		return persistNewClusters(clusterFactory, java.util.Collections.singletonList(records)).get(0);
+		return persistNewClusters(clusterFactory, java.util.Collections.singletonList(records), ProgressListener.NOOP)
+			.get(0);
 	}
 
 	/**
@@ -412,7 +414,8 @@ public class DbConnection {
 	 *
 	 * @return i cluster creati, nello stesso ordine di {@code components}
 	 */
-	public List<Cluster> persistNewClusters(ClusterFactory clusterFactory, List<? extends Collection<Record>> components) {
+	public List<Cluster> persistNewClusters(ClusterFactory clusterFactory, List<? extends Collection<Record>> components,
+			ProgressListener progress) {
 		final List<Cluster> clusters = new java.util.ArrayList<>(components.size());
 		if (components.isEmpty()) {
 			return clusters;
@@ -444,8 +447,11 @@ public class DbConnection {
 				if (++sinceFlush >= FLUSH_INTERVAL) {
 					entityManager.flush();
 					sinceFlush = 0;
+					progress.update(clusters.size(), components.size());
 				}
 			}
+			entityManager.flush();
+			progress.update(components.size(), components.size());
 
 			entityManager.getTransaction().commit();
 		}

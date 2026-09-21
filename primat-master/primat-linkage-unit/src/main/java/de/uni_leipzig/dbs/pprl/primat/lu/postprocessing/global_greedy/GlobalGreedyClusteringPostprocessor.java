@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Party;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.LinkedPair;
+import de.uni_leipzig.dbs.pprl.primat.lu.utils.ProgressListener;
 import de.uni_leipzig.dbs.pprl.primat.lu.model.MultiPartiteSimilarityGraph;
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.MultipartiteClusteringStrategy;
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.global_greedy.data_structures.GlobalGreedyConfig;
@@ -40,10 +41,17 @@ public class GlobalGreedyClusteringPostprocessor implements MultipartiteClusteri
 	}
 
 	@Override
+	public void setProgressListener(ProgressListener listener) {
+		this.progressListener = listener;
+	}
+
+	private ProgressListener progressListener = ProgressListener.NOOP;
+
+	@Override
 	public List<LinkedPair<Record>> cluster(MultiPartiteSimilarityGraph graph) {
 		final List<LinkedPair<Record>> matches = new ArrayList<>();
 
-		for (final MultiPartiteSimilarityGraph component : graph.getConnectedComponentsSimGraph()) {
+		for (final MultiPartiteSimilarityGraph component : ProgressListener.tracking(graph.getConnectedComponentsSimGraph(), progressListener)) {
 			// jgrapht non garantisce un ordine di iterazione stabile di
 			// vertexSet() tra run/JVM: ordiniamo con una chiave stabile
 			// (party#id) perché l'algoritmo deve essere riproducibile per la

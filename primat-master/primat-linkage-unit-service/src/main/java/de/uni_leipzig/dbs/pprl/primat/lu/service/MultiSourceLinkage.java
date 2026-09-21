@@ -66,6 +66,7 @@ import de.uni_leipzig.dbs.pprl.primat.lu.similarity_vector.FlatSimilarityVectorA
 import de.uni_leipzig.dbs.pprl.primat.lu.similarity_vector.SimilarityVectorAggregator;
 import de.uni_leipzig.dbs.pprl.primat.lu.similarity_vector.SimilarityVectorFlattener;
 import de.uni_leipzig.dbs.pprl.primat.lu.utils.NoThresholdRefinement;
+import de.uni_leipzig.dbs.pprl.primat.lu.utils.ProgressListener;
 import de.uni_leipzig.dbs.pprl.primat.lu.utils.ThresholdClassificationRefinement;
 
 /**
@@ -87,6 +88,26 @@ public class MultiSourceLinkage {
 	 * invocata su questa istanza — vedi {@link #getLastClusteringElapsedNanos()}.
 	 */
 	private long lastClusteringElapsedNanos;
+
+	private ProgressListener clusteringProgress = ProgressListener.NOOP;
+
+	private ProgressListener persistenceProgress = ProgressListener.NOOP;
+
+	private Runnable onClusteringFinished = () -> {
+	};
+
+	public void setClusteringProgress(ProgressListener listener) {
+		this.clusteringProgress = listener;
+	}
+
+	public void setPersistenceProgress(ProgressListener listener) {
+		this.persistenceProgress = listener;
+	}
+
+	/** Invocato subito dopo il clustering, prima di qualsiasi scrittura su DB. */
+	public void setOnClusteringFinished(Runnable callback) {
+		this.onClusteringFinished = callback;
+	}
 
 	/**
 	 * Esito della valutazione del blocking (RR/PC/PQ) dell'ultima
@@ -204,7 +225,7 @@ public class MultiSourceLinkage {
 		final Collection<Record> allRecords = input.values().stream().flatMap(Collection::stream)
 				.collect(Collectors.toList());
 		final Set<Cluster> linkTable = dbConnection != null
-				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection)
+				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection, persistenceProgress)
 				: LinkTableBuilder.build(matches, allRecords);
 
 		return buildOutcome(input, matches, linkTable);
@@ -236,7 +257,7 @@ public class MultiSourceLinkage {
 		final Collection<Record> allRecords = input.values().stream().flatMap(Collection::stream)
 				.collect(Collectors.toList());
 		final Set<Cluster> linkTable = dbConnection != null
-				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection)
+				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection, persistenceProgress)
 				: LinkTableBuilder.build(matches, allRecords);
 
 		return buildOutcome(input, matches, linkTable);
@@ -270,7 +291,7 @@ public class MultiSourceLinkage {
 		final Collection<Record> allRecords = input.values().stream().flatMap(Collection::stream)
 				.collect(Collectors.toList());
 		final Set<Cluster> linkTable = dbConnection != null
-				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection)
+				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection, persistenceProgress)
 				: LinkTableBuilder.build(matches, allRecords);
 
 		return buildOutcome(input, matches, linkTable);
@@ -303,7 +324,7 @@ public class MultiSourceLinkage {
 		final Collection<Record> allRecords = input.values().stream().flatMap(Collection::stream)
 				.collect(Collectors.toList());
 		final Set<Cluster> linkTable = dbConnection != null
-				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection)
+				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection, persistenceProgress)
 				: LinkTableBuilder.build(matches, allRecords);
 
 		return buildOutcome(input, matches, linkTable);
@@ -354,8 +375,10 @@ public class MultiSourceLinkage {
 		final LinkageResult<Record> linkageResult = classify(input, blocker, threshold);
 		final MultiPartiteSimilarityGraph graph = MultiPartiteSimilarityGraph.from(linkageResult);
 		final long clusteringStartNanos = System.nanoTime();
+		clusterer.setProgressListener(clusteringProgress);
 		final List<LinkedPair<Record>> matches = clusterer.cluster(graph);
 		lastClusteringElapsedNanos = System.nanoTime() - clusteringStartNanos;
+		onClusteringFinished.run();
 		return matches;
 	}
 

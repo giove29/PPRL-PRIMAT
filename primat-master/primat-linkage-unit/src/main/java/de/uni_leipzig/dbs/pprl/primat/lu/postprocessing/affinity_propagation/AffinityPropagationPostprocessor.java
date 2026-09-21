@@ -8,6 +8,7 @@ import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.common.utils.Pair;
 import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.LinkageResultPartition;
 import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.LinkedPair;
+import de.uni_leipzig.dbs.pprl.primat.lu.utils.ProgressListener;
 import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.matches.MatchStrategy;
 import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.matches.SimilarityGraphVisitor;
 import de.uni_leipzig.dbs.pprl.primat.lu.model.MultiPartiteSimilarityGraph;
@@ -126,11 +127,18 @@ public class AffinityPropagationPostprocessor <T extends Linkable> implements Po
      * flusso).
      */
     @Override
+    public void setProgressListener(ProgressListener listener) {
+        this.progressListener = listener;
+    }
+
+    private ProgressListener progressListener = ProgressListener.NOOP;
+
+    @Override
     public List<LinkedPair<Record>> cluster(MultiPartiteSimilarityGraph graph) {
         final List<LinkedPair<Record>> matches = new ArrayList<>();
         final Set<String> cleanSources = new HashSet<>(apConfig.getCleanSources());
 
-        for (final MultiPartiteSimilarityGraph component : graph.getConnectedComponentsSimGraph()) {
+        for (final MultiPartiteSimilarityGraph component : ProgressListener.tracking(graph.getConnectedComponentsSimGraph(), progressListener)) {
             final Map<Record, Integer> recordIndexMap = new HashMap<>();
             final Map<Integer, Record> indexRecordMap = new HashMap<>();
             final Multimap<String, Integer> cleanSrcElementIndices = ArrayListMultimap.create();

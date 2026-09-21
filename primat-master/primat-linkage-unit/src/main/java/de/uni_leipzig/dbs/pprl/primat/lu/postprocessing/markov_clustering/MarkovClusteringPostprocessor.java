@@ -11,6 +11,7 @@ import java.util.Map;
 
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.LinkedPair;
+import de.uni_leipzig.dbs.pprl.primat.lu.utils.ProgressListener;
 import de.uni_leipzig.dbs.pprl.primat.lu.model.MultiPartiteSimilarityGraph;
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.MultipartiteClusteringStrategy;
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.markov_clustering.data_structures.MclConfig;
@@ -31,10 +32,17 @@ public class MarkovClusteringPostprocessor implements MultipartiteClusteringStra
 	}
 
 	@Override
+	public void setProgressListener(ProgressListener listener) {
+		this.progressListener = listener;
+	}
+
+	private ProgressListener progressListener = ProgressListener.NOOP;
+
+	@Override
 	public List<LinkedPair<Record>> cluster(MultiPartiteSimilarityGraph graph) {
 		final List<LinkedPair<Record>> matches = new ArrayList<>();
 
-		for (final MultiPartiteSimilarityGraph component : graph.getConnectedComponentsSimGraph()) {
+		for (final MultiPartiteSimilarityGraph component : ProgressListener.tracking(graph.getConnectedComponentsSimGraph(), progressListener)) {
 			final Map<Record, Integer> recordIndexMap = new HashMap<>();
 			final Map<Integer, Record> indexRecordMap = new HashMap<>();
 			for (final Record record : component.vertexSet()) {
