@@ -1,20 +1,17 @@
 {
-  "_comment": "Esempio di 'hardeningChain': applica prima BLIP (randomized response) e poi XOR_FOLD in sequenza sullo stesso RBF. XOR_FOLD deve sempre essere l'ultimo step della catena (validato da DataOwnerConfigLoader): dimezza la lunghezza del bitset e determina il tipo di attributo risultante (XorBitSetAttribute), quindi qualunque step successivo non avrebbe un significato ben definito. 'hardeningChain' e 'hardening' (singolo) sono mutuamente esclusivi.",
-  "party": "A",
+  "party": "C",
   "debug": true,
   "mqttBrokerUrl": "tcp://localhost:1883",
   "dataSource": {
     "type": "CSV",
     "csv": {
-      "filePath": "primat-examples/src/main/resources/synthetic_ncvr/party_A_clean.csv"
+      "delimiter": ";",
+      "filePath": "primat-examples/src/main/resources/synthetic_ncvr/party_C_dirty.csv"
     }
   },
-"bloomFilter": {
+  "bloomFilter": {
     "length": 1024,
-    "hardeningChain": [
-      { "type": "BLIP", "probability": 0.2, "seed": 42 },
-      { "type": "XOR_FOLD", "foldCount": 1 }
-    ]
+    "hardeningChain": []
   },
   "columns": [
     { "index": 0, "name": "PARTY", "role": "PARTY" },

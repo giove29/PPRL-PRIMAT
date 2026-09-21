@@ -65,9 +65,19 @@ public final class DataOwnerConfigLoader {
 		final DataSourceJsonConfig dataSource = raw.getDataSource();
 		final String csvFilePath = dataSource.getType() == DataSourceType.CSV ? dataSource.getCsv().getFilePath()
 				: null;
+		final boolean csvHasHeader = dataSource.getType() == DataSourceType.CSV && dataSource.getCsv().isHasHeader();
+		char csvDelimiter = ';';
+		if (dataSource.getType() == DataSourceType.CSV) {
+			final String d = dataSource.getCsv().getDelimiter();
+			if (d.length() != 1) {
+				throw new DataOwnerConfigException(
+						"dataSource.csv.delimiter deve essere un solo carattere, trovato: \"" + d + "\" in " + jsonPath);
+			}
+			csvDelimiter = d.charAt(0);
+		}
 		final DbSourceConfig dbConfig = dataSource.getType() == DataSourceType.DB ? dataSource.getDb() : null;
 
-		return new DataOwnerConfig(raw.getParty(), dataSource.getType(), csvFilePath, dbConfig,
+		return new DataOwnerConfig(raw.getParty(), dataSource.getType(), csvFilePath, csvHasHeader, csvDelimiter, dbConfig,
 				raw.getMqttBrokerUrl(), raw.getColumns(), bfLength, hardener, raw.isDebug());
 	}
 

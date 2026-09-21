@@ -1,0 +1,24 @@
+{
+  "mqttBrokerUrl": "tcp://localhost:1883",
+  "parties": [
+    { "name": "org", "duplicateFree": true },
+    { "name": "org1", "duplicateFree": false }
+  ],
+  "clusteringMethod": "MSCD_AP",
+  "similarityThreshold": 0.75,
+  "rbfSize": 1024,
+  "blocking": {
+    "jaccardLsh": {
+      "keySize": 8,
+      "keys": 20
+    }
+  },
+  "persistence": {
+    "enabled": true
+  },
+  "database": {
+    "url": "jdbc:postgresql://localhost:5432/primat_mscd_ap",
+    "user": "primat",
+    "password": "primat"
+  }
+}

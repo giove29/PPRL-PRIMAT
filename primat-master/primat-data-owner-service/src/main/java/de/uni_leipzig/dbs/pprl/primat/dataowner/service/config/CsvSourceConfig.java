@@ -8,8 +8,20 @@ package de.uni_leipzig.dbs.pprl.primat.dataowner.service.config;
 public class CsvSourceConfig {
 
 	private String filePath;
+	private boolean hasHeader;
+	private String delimiter;
+
+	/** @return separatore di campo del CSV, un solo carattere (default {@code ";"}). */
+	public String getDelimiter() {
+		return delimiter == null ? ";" : delimiter;
+	}
 
 	public String getFilePath() {
 		return filePath;
+	}
+
+	/** @return {@code true} se la prima riga del CSV e' un'intestazione da saltare (default {@code false}). */
+	public boolean isHasHeader() {
+		return hasHeader;
 	}
 }

@@ -25,6 +25,8 @@ public class DataOwnerConfig {
 	private final String party;
 	private final DataSourceType dataSourceType;
 	private final String csvFilePath;
+	private final boolean csvHasHeader;
+	private final char csvDelimiter;
 	private final DbSourceConfig dbConfig;
 	private final String mqttBrokerUrl;
 	private final String mqttClientId;
@@ -53,12 +55,14 @@ public class DataOwnerConfig {
 	 * @param hardener          tecnica di hardening da applicare all'RBF dopo la codifica
 	 * @param debug             se {@code true}, la pipeline stampa a schermo i primi 2 record ad ogni passo di preprocessing
 	 */
-	public DataOwnerConfig(String party, DataSourceType dataSourceType, String csvFilePath, DbSourceConfig dbConfig,
-			String mqttBrokerUrl, List<ColumnConfig> columns, int bloomFilterLength, BloomFilterHardener hardener,
-			boolean debug) {
+	public DataOwnerConfig(String party, DataSourceType dataSourceType, String csvFilePath, boolean csvHasHeader,
+			char csvDelimiter, DbSourceConfig dbConfig, String mqttBrokerUrl, List<ColumnConfig> columns, int bloomFilterLength,
+			BloomFilterHardener hardener, boolean debug) {
 		this.party = party;
 		this.dataSourceType = dataSourceType;
 		this.csvFilePath = csvFilePath;
+		this.csvHasHeader = csvHasHeader;
+		this.csvDelimiter = csvDelimiter;
 		this.dbConfig = dbConfig;
 		this.mqttBrokerUrl = mqttBrokerUrl;
 		this.mqttClientId = "data-owner-" + party;
@@ -78,6 +82,16 @@ public class DataOwnerConfig {
 
 	public String getCsvFilePath() {
 		return csvFilePath;
+	}
+
+	/** @return {@code true} se il CSV ha una riga di intestazione da saltare. */
+	public boolean isCsvHasHeader() {
+		return csvHasHeader;
+	}
+
+	/** @return separatore di campo del CSV. */
+	public char getCsvDelimiter() {
+		return csvDelimiter;
 	}
 
 	/** @return dettagli della sorgente DB (tabella/connessione), {@code null} se non configurata. */

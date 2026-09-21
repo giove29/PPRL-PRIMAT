@@ -1,11 +1,12 @@
 {
-  "party": "C",
+  "party": "B",
   "debug": true,
   "mqttBrokerUrl": "tcp://localhost:1883",
   "dataSource": {
     "type": "CSV",
     "csv": {
-      "filePath": "primat-examples/src/main/resources/synthetic_ncvr/party_C_clean.csv"
+      "delimiter": ";",
+      "filePath": "primat-examples/src/main/resources/synthetic_ncvr/party_B_dirty.csv"
     }
   },
   "bloomFilter": {

@@ -1,0 +1,28 @@
+{
+  "party": "org",
+  "debug": true,
+  "mqttBrokerUrl": "tcp://localhost:1883",
+  "dataSource": {
+    "type": "CSV",
+    "csv": {
+      "delimiter": ";",
+      "filePath": "primat-examples/src/main/resources/febrl4_clean/febrl4_clean_A.csv",
+      "hasHeader": true
+    }
+  },
+  "bloomFilter": {
+    "length": 1024,
+    "hardeningChain": []
+  },
+  "columns": [
+    { "index": 0, "name": "PARTY", "role": "PARTY" },
+    { "index": 1, "name": "ID", "role": "ID" },
+    { "index": 2, "name": "GLOBAL_ID", "role": "GLOBAL_ID" },
+    { "index": 3, "name": "given_name", "role": "QID", "dataType": "TEXT", "hashFunctions": 25, "salt": "SALT_" },
+    { "index": 4, "name": "surname", "role": "QID", "dataType": "TEXT", "hashFunctions": 25, "salt": "SALT_" },
+    { "index": 8, "name": "suburb", "role": "QID", "dataType": "TEXT", "hashFunctions": 6, "salt": "SALT_" },
+    { "index": 9, "name": "postcode", "role": "QID", "dataType": "NUMERIC", "hashFunctions": 6, "salt": "SALT_" },
+    { "index": 10, "name": "state", "role": "QID", "dataType": "TEXT", "hashFunctions": 3, "salt": "SALT_" },
+    { "index": 11, "name": "date_of_birth", "role": "QID", "dataType": "NUMERIC", "hashFunctions": 25, "salt": "SALT_" }
+  ]
+}

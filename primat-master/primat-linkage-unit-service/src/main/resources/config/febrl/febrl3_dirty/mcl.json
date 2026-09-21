@@ -1,0 +1,19 @@
+{
+  "mqttBrokerUrl": "tcp://localhost:1883",
+  "parties": [
+    { "name": "org", "duplicateFree": false }
+  ],
+  "clusteringMethod": "MCL",
+  "similarityThreshold": 0.75,
+  "rbfSize": 1024,
+  "blocking": {
+    "jaccardLsh": {
+      "keySize": 8,
+      "keys": 20
+    }
+  },
+  "persistence": {
+    "enabled": false,
+    "csvOutputPath": "mcl_debug_output.csv"
+  }
+}

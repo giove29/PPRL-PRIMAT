@@ -49,12 +49,12 @@ Output atteso: `Broker MQTT in ascolto su tcp://0.0.0.0:1883 (Ctrl+C per fermarl
 Un processo per party, un solo argomento: il path del JSON di configurazione (party, broker MQTT, sorgente dati, schema colonne, tuning RBF — vedi `primat-data-owner-service/.../service/config/`). `exec-maven-plugin` è configurato nel `pom.xml` del modulo (2026-09-16), quindi non serve costruire il classpath a mano:
 
 ```bash
-"$MVN" -pl primat-data-owner-service exec:java -Dexec.args="src/main/resources/config/party_A.json"
+"$MVN" -pl primat-data-owner-service exec:java -Dexec.args="src/main/resources/config/examples/example_clean/party_A_clean.json"
 ```
 
-Ripetere per `party_B.json` e `party_C.json` (party diversi = client MQTT diversi, vedi `DataOwnerConfig.mqttClientId = "data-owner-" + party`), ciascuno in un terminale separato (il processo resta in ascolto all'infinito). I tre JSON d'esempio replicano lo schema/tuning NCVR usato finora; per puntare a dati propri basta un nuovo JSON (vedi sezione 7) senza toccare codice.
+Ripetere per `party_B_clean.json` e `party_C_clean.json` (o le varianti `example_dirty/*_dirty.json`; per FEBRL vedi `config/febrl/<scenario>/party_org*.json`, party `org`/`org1`, es. `config/febrl/febrl4_1_mixed/party_org_clean.json` + `party_org1_dirty.json`) (party diversi = client MQTT diversi, vedi `DataOwnerConfig.mqttClientId = "data-owner-" + party`), ciascuno in un terminale separato (il processo resta in ascolto all'infinito). I tre JSON d'esempio replicano lo schema/tuning NCVR usato finora; per puntare a dati propri basta un nuovo JSON (vedi sezione 7) senza toccare codice.
 
-Esempio di contenuto (`party_A.json`, abbreviato — vedi il file per lo schema completo a 9 colonne):
+Esempio di contenuto (`party_A_clean.json`, abbreviato — vedi il file per lo schema completo a 9 colonne):
 ```json
 {
   "party": "A",
@@ -76,7 +76,7 @@ Output atteso per ciascun Data Owner all'avvio: `[A] in ascolto su primat/do/A/c
 
 ## 4. Avvio dell'orchestratore (Linkage Unit)
 
-Dal 2026-09-16 `LinkageUnitOrchestrator` è configurato via JSON (mirror del Data Owner): un solo argomento, il path del file di configurazione, che dichiara — tra le altre cose — **quale delle 5 strategie** girare (`clusteringMethod`: `CENTER_CLUSTERING`, `MSCD_AP`, `MCL`, `GLOBAL_GREEDY`, `CLIP` — le ultime due dal 2026-09-17; `MSCD_AP_NO_CLEAN` rimosso il 2026-09-21). Non c'è più auto-routing basato su dirty/clean, e un processo esegue **un solo run**. 5 file di esempio in `primat-linkage-unit-service/src/main/resources/config/`, uno per strategia:
+Dal 2026-09-16 `LinkageUnitOrchestrator` è configurato via JSON (mirror del Data Owner): un solo argomento, il path del file di configurazione, che dichiara — tra le altre cose — **quale delle 5 strategie** girare (`clusteringMethod`: `CENTER_CLUSTERING`, `MSCD_AP`, `MCL`, `GLOBAL_GREEDY`, `CLIP` — le ultime due dal 2026-09-17; `MSCD_AP_NO_CLEAN` rimosso il 2026-09-21). Non c'è più auto-routing basato su dirty/clean, e un processo esegue **un solo run**. 5 file di esempio in `primat-linkage-unit-service/src/main/resources/config/`, uno per strategia (party NCVR `A`/`B`/`C`). Per FEBRL i JSON della LU stanno in `config/febrl/{febrl2_dirty,febrl3_dirty,febrl4_clean,febrl4_1_mixed}/<strategia>.json`, con party `org`/`org1` (stessi nomi dei Data Owner in `primat-data-owner-service/.../config/febrl/`):
 
 ```bash
 "$MVN" -pl primat-linkage-unit-service exec:java -Dexec.args="src/main/resources/config/mscd_ap.json"

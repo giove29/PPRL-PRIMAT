@@ -21,15 +21,20 @@ import de.uni_leipzig.dbs.pprl.primat.dataowner.service.io.CsvRecordSource;
 class DataOwnerPipelineIdPrefixTest {
 
 	private List<String> publishedIds(String party) throws Exception {
+		return publishedIds(party, false);
+	}
+
+	private List<String> publishedIds(String party, boolean withHeader) throws Exception {
 		final Path dir = Files.createTempDirectory("dataowner-id-test");
 		dir.toFile().deleteOnExit();
 		final Path csv = dir.resolve("data.csv");
-		Files.writeString(csv, party + ";1;1;JOHN\n" + party + ";2;2;MARY\n", StandardCharsets.UTF_8);
+		Files.writeString(csv, (withHeader ? "PARTY;GLOBAL_ID;ID;FN\n" : "") + party + ";1;1;JOHN\n" + party
+				+ ";2;2;MARY\n", StandardCharsets.UTF_8);
 		csv.toFile().deleteOnExit();
 
 		final String json = "{\"party\": \"" + party + "\", \"mqttBrokerUrl\": \"tcp://localhost:1883\","
 				+ "\"dataSource\": {\"type\": \"CSV\", \"csv\": {\"filePath\": \""
-				+ csv.toString().replace("\\", "\\\\") + "\"}},"
+				+ csv.toString().replace("\\", "\\\\") + "\"" + (withHeader ? ", \"hasHeader\": true" : "") + "}},"
 				+ "\"columns\": ["
 				+ "{\"index\": 0, \"name\": \"PARTY\", \"role\": \"PARTY\"},"
 				+ "{\"index\": 1, \"name\": \"GLOBAL_ID\", \"role\": \"GLOBAL_ID\"},"
@@ -40,13 +45,18 @@ class DataOwnerPipelineIdPrefixTest {
 		jsonPath.toFile().deleteOnExit();
 
 		final DataOwnerConfig config = DataOwnerConfigLoader.load(jsonPath);
-		return new DataOwnerPipeline(new CsvRecordSource(config.getCsvFilePath()), config).run().stream()
+		return new DataOwnerPipeline(new CsvRecordSource(config.getCsvFilePath(), config.isCsvHasHeader(), config.getCsvDelimiter()), config).run().stream()
 				.map(Record::getId).collect(Collectors.toList());
 	}
 
 	@Test
 	void prefixesLocalIdsWithPartyName() throws Exception {
 		assertEquals(List.of("A1", "A2"), publishedIds("A"));
+	}
+
+	@Test
+	void hasHeaderSkipsFirstRow() throws Exception {
+		assertEquals(List.of("A1", "A2"), publishedIds("A", true));
 	}
 
 	@Test

@@ -111,7 +111,7 @@ public class DataOwnerService {
 	private RecordSource newRecordSource() {
 		switch (config.getDataSourceType()) {
 			case CSV:
-				return new CsvRecordSource(config.getCsvFilePath());
+				return new CsvRecordSource(config.getCsvFilePath(), config.isCsvHasHeader(), config.getCsvDelimiter());
 			case DB: {
 				final DbSourceConfig dbConfig = config.getDbConfig();
 				return new JdbcRecordSource(dbConfig.getJdbcUrl(), dbConfig.getUsername(), dbConfig.getPassword(),

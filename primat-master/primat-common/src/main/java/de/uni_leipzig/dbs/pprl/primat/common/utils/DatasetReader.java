@@ -32,6 +32,7 @@ public final class DatasetReader {
 	
 	private String filePath;
 	private boolean hasHeader;
+	private char delimiter;
 	private RecordSchemaConfiguration rsc;
 	
 	public DatasetReader(String filePath, RecordSchemaConfiguration rsc) {
@@ -39,13 +40,18 @@ public final class DatasetReader {
 	}
 
 	public DatasetReader(String filePath, boolean hasHeader, RecordSchemaConfiguration rsc) {
+		this(filePath, hasHeader, ';', rsc);
+	}
+
+	public DatasetReader(String filePath, boolean hasHeader, char delimiter, RecordSchemaConfiguration rsc) {
 		this.filePath = filePath;
 		this.hasHeader = hasHeader;
-		this.rsc = rsc;	
+		this.delimiter = delimiter;
+		this.rsc = rsc;
 	}
-	
+
 	public List<Record> read() throws IOException {
-		final CSVReader csvReader = new CSVReader(filePath, hasHeader,';');
+		final CSVReader csvReader = new CSVReader(filePath, hasHeader, delimiter);
 		final List<CSVRecord> stringRecords = csvReader.read();
 		final List<String> headerNames = csvReader.getHeader();
 		final CSVRecordWrapper wrapper = new CSVRecordWrapper(rsc, headerNames);
