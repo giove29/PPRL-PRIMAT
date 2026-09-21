@@ -38,6 +38,7 @@ public class EmbeddedBrokerLauncher {
 		properties.setProperty(IConfig.PORT_PROPERTY_NAME, String.valueOf(port));
 		properties.setProperty(IConfig.HOST_PROPERTY_NAME, "0.0.0.0");
 		properties.setProperty(IConfig.PERSISTENCE_ENABLED_PROPERTY_NAME, Boolean.FALSE.toString());
+		properties.setProperty(IConfig.NETTY_MAX_BYTES_PROPERTY_NAME, "268435455");
 		final IConfig config = new MemoryConfig(properties);
 		server.startServer(config);
 	}

@@ -75,7 +75,7 @@ class LinkageUnitConfigLoaderTest {
 		assertEquals(42L, config.getLshSeed());
 		assertEquals("tcp://localhost:1883", config.getMqttBrokerUrl());
 		assertEquals(30L, config.getRbfCollectionTimeoutSeconds());
-		assertEquals(3L, config.getRbfRepublishIntervalSeconds());
+		assertEquals(15L, config.getRbfRepublishIntervalSeconds());
 		assertFalse(config.isPersistenceEnabled());
 		assertEquals("mcl_debug_output.csv", config.getCsvOutputPath());
 		assertNull(config.getCenterClusteringConfig().getCenterAssignmentThreshold());

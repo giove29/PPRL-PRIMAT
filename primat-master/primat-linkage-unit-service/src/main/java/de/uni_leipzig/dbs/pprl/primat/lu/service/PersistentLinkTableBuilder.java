@@ -72,9 +72,16 @@ public final class PersistentLinkTableBuilder {
 		}
 
 		final Set<Cluster> linkTable = new HashSet<>();
+		final List<List<Record>> newComponents = new ArrayList<>();
 		for (final List<Record> component : componentsByRoot.values()) {
-			linkTable.add(reconcile(component, clusterFactory, dbConnection));
+			if (hasExistingCluster(component)) {
+				linkTable.add(reconcile(component, clusterFactory, dbConnection));
+			}
+			else {
+				newComponents.add(component);
+			}
 		}
+		linkTable.addAll(dbConnection.persistNewClusters(clusterFactory, newComponents));
 		return linkTable;
 	}
 
@@ -121,6 +128,15 @@ public final class PersistentLinkTableBuilder {
 		final Cluster target = sortedByIdAscending.get(0);
 		final List<Cluster> losers = sortedByIdAscending.subList(1, sortedByIdAscending.size());
 		return dbConnection.mergeClusters(target, losers, newRecordsOf(component));
+	}
+
+	private static boolean hasExistingCluster(List<Record> component) {
+		for (final Record record : component) {
+			if (record.getCluster() != null) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static List<Record> newRecordsOf(List<Record> component) {

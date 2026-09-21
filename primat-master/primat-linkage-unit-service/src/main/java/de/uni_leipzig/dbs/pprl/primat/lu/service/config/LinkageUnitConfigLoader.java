@@ -47,7 +47,7 @@ public final class LinkageUnitConfigLoader {
 	private static final long DEFAULT_LSH_SEED = 42L;
 	private static final long DEFAULT_BROKER_CONNECT_TIMEOUT_SECONDS = 30L;
 	private static final long DEFAULT_RBF_COLLECTION_TIMEOUT_SECONDS = 30L;
-	private static final long DEFAULT_RBF_REPUBLISH_INTERVAL_SECONDS = 3L;
+	private static final long DEFAULT_RBF_REPUBLISH_INTERVAL_SECONDS = 15L;
 	/**
 	 * Nome storico, mantenuto identico per compatibilità con
 	 * {@code python_evaluation/evaluate_mcl.py}, che legge questo path di

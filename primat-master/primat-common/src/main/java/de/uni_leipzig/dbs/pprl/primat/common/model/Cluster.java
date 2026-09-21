@@ -26,6 +26,8 @@ import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.SequenceGenerator;
 import javax.persistence.Id;
 import javax.persistence.Index;
 import javax.persistence.JoinColumn;
@@ -47,7 +49,8 @@ import de.uni_leipzig.dbs.pprl.primat.common.utils.BitSetUtils;
 public class Cluster implements Linkable {
 
 	@Id
-	@GeneratedValue
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "cluster_seq")
+	@SequenceGenerator(name = "cluster_seq", sequenceName = "hibernate_sequence", allocationSize = 50)
 	private int id;
 
 	@OneToOne

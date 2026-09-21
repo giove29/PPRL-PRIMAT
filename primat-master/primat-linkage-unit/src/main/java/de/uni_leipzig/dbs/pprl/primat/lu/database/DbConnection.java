@@ -58,16 +58,31 @@ public class DbConnection {
 	 */
 	private static final boolean SQL_DEBUG_LOGGING = false;
 
+	private static final int FLUSH_INTERVAL = 500;
+
+	private static final int IN_CLAUSE_CHUNK = 1000;
+
 	private final EntityManagerFactory entityManagerFactory;
 
 	public DbConnection(String persistenceUnitName, String jdbcUrl, String jdbcUser, String jdbcPassword) {
 		final Map<String, Object> overrides = new HashMap<>();
 		overrides.put("hibernate.show_sql", String.valueOf(SQL_DEBUG_LOGGING));
 		overrides.put("hibernate.format_sql", String.valueOf(SQL_DEBUG_LOGGING));
-		overrides.put("javax.persistence.jdbc.url", jdbcUrl);
+		overrides.put("hibernate.jdbc.batch_size", "50");
+		overrides.put("hibernate.order_inserts", "true");
+		overrides.put("hibernate.order_updates", "true");
+		overrides.put("hibernate.jdbc.batch_versioned_data", "true");
+		overrides.put("javax.persistence.jdbc.url", withRewriteBatchedInserts(jdbcUrl));
 		overrides.put("javax.persistence.jdbc.user", jdbcUser);
 		overrides.put("javax.persistence.jdbc.password", jdbcPassword);
 		this.entityManagerFactory = Persistence.createEntityManagerFactory(persistenceUnitName, overrides);
+	}
+
+	private static String withRewriteBatchedInserts(String jdbcUrl) {
+		if (jdbcUrl == null || jdbcUrl.contains("reWriteBatchedInserts")) {
+			return jdbcUrl;
+		}
+		return jdbcUrl + (jdbcUrl.contains("?") ? "&" : "?") + "reWriteBatchedInserts=true";
 	}
 
 	public EntityManager openEntityManager() {
@@ -386,25 +401,107 @@ public class DbConnection {
 	 * preesistente).
 	 */
 	public Cluster persistNewCluster(ClusterFactory clusterFactory, Collection<Record> records) {
-		final EntityManager entityManager = openEntityManager();
-		entityManager.getTransaction().begin();
+		return persistNewClusters(clusterFactory, java.util.Collections.singletonList(records)).get(0);
+	}
 
-		Cluster cluster = null;
-		for (final Record rec : records) {
-			mergeBlockingKeys(entityManager, rec);
-			if (cluster == null) {
-				cluster = clusterFactory.build(rec);
+	/**
+	 * Persiste in blocco un nuovo {@link Cluster} per ciascuna componente
+	 * passata: un solo {@link EntityManager}, una sola transazione, blocking
+	 * key pre-caricate con poche query invece di un {@code merge} (SELECT) per
+	 * ciascuna, flush periodico per attivare il batching JDBC.
+	 *
+	 * @return i cluster creati, nello stesso ordine di {@code components}
+	 */
+	public List<Cluster> persistNewClusters(ClusterFactory clusterFactory, List<? extends Collection<Record>> components) {
+		final List<Cluster> clusters = new java.util.ArrayList<>(components.size());
+		if (components.isEmpty()) {
+			return clusters;
+		}
+
+		final EntityManager entityManager = openEntityManager();
+		try {
+			entityManager.getTransaction().begin();
+
+			final Map<BlockingKeyAttribute, BlockingKeyAttribute> managedKeys = loadManagedBlockingKeys(entityManager,
+				components);
+
+			int sinceFlush = 0;
+			for (final Collection<Record> records : components) {
+				Cluster cluster = null;
+				for (final Record rec : records) {
+					rec.setBlockingKeys(rec.getBlockingKeys().stream().map(managedKeys::get).collect(Collectors.toSet()));
+					if (cluster == null) {
+						cluster = clusterFactory.build(rec);
+					}
+					else {
+						cluster.addRecord(rec);
+					}
+				}
+				syncClusterBlockingKeys(cluster);
+				entityManager.persist(cluster);
+				clusters.add(cluster);
+
+				if (++sinceFlush >= FLUSH_INTERVAL) {
+					entityManager.flush();
+					sinceFlush = 0;
+				}
 			}
-			else {
-				cluster.addRecord(rec);
+
+			entityManager.getTransaction().commit();
+		}
+		catch (RuntimeException e) {
+			if (entityManager.getTransaction().isActive()) {
+				entityManager.getTransaction().rollback();
+			}
+			throw e;
+		}
+		finally {
+			entityManager.close();
+		}
+		return clusters;
+	}
+
+	/**
+	 * Restituisce, per ogni blocking key usata dai record delle componenti,
+	 * l'istanza gestita dall'{@code entityManager}: quelle già a DB vengono
+	 * caricate con una query per ({@code blockingKeyId}, blocco di valori), le
+	 * mancanti vengono persistite una sola volta.
+	 */
+	private static Map<BlockingKeyAttribute, BlockingKeyAttribute> loadManagedBlockingKeys(EntityManager entityManager,
+			List<? extends Collection<Record>> components) {
+		final Map<Integer, Set<String>> valuesByKeyId = new HashMap<>();
+		for (final Collection<Record> records : components) {
+			for (final Record rec : records) {
+				for (final BlockingKeyAttribute bk : rec.getBlockingKeys()) {
+					valuesByKeyId.computeIfAbsent(bk.getBlockingKeyId().getBlockingKeyId(), k -> new HashSet<>())
+						.add(bk.getBlockingKeyId().getBlockingKeyValue());
+				}
 			}
 		}
-		syncClusterBlockingKeys(cluster);
-		entityManager.persist(cluster);
 
-		entityManager.getTransaction().commit();
-
-		return cluster;
+		final Map<BlockingKeyAttribute, BlockingKeyAttribute> managed = new HashMap<>();
+		for (final Map.Entry<Integer, Set<String>> entry : valuesByKeyId.entrySet()) {
+			final List<String> values = new java.util.ArrayList<>(entry.getValue());
+			for (int from = 0; from < values.size(); from += IN_CLAUSE_CHUNK) {
+				final List<String> chunk = values.subList(from, Math.min(from + IN_CLAUSE_CHUNK, values.size()));
+				final List<BlockingKeyAttribute> found = entityManager.createQuery(
+					"SELECT b FROM BlockingKeyAttribute b WHERE b.blockingKeyId.blockingKeyId = :id "
+						+ "AND b.blockingKeyId.blockingKeyValue IN :vals",
+					BlockingKeyAttribute.class).setParameter("id", entry.getKey()).setParameter("vals", chunk)
+					.getResultList();
+				for (final BlockingKeyAttribute bk : found) {
+					managed.put(bk, bk);
+				}
+			}
+			for (final String value : entry.getValue()) {
+				final BlockingKeyAttribute probe = new BlockingKeyAttribute(entry.getKey(), value);
+				if (!managed.containsKey(probe)) {
+					entityManager.persist(probe);
+					managed.put(probe, probe);
+				}
+			}
+		}
+		return managed;
 	}
 
 	/**
@@ -419,17 +516,22 @@ public class DbConnection {
 		}
 
 		final EntityManager entityManager = openEntityManager();
-		entityManager.getTransaction().begin();
+		try {
+			entityManager.getTransaction().begin();
 
-		final Cluster managedCluster = entityManager.find(Cluster.class, cluster.getId());
-		for (final Record rec : newRecords) {
-			mergeBlockingKeys(entityManager, rec);
-			managedCluster.addRecord(rec);
+			final Cluster managedCluster = entityManager.find(Cluster.class, cluster.getId());
+			for (final Record rec : newRecords) {
+				mergeBlockingKeys(entityManager, rec);
+				managedCluster.addRecord(rec);
+			}
+			syncClusterBlockingKeys(managedCluster);
+			entityManager.merge(managedCluster);
+
+			entityManager.getTransaction().commit();
 		}
-		syncClusterBlockingKeys(managedCluster);
-		entityManager.merge(managedCluster);
-
-		entityManager.getTransaction().commit();
+		finally {
+			entityManager.close();
+		}
 	}
 
 	/**
@@ -441,6 +543,16 @@ public class DbConnection {
 	 */
 	public Cluster mergeClusters(Cluster target, Collection<Cluster> losers, Collection<Record> newUnclusteredRecords) {
 		final EntityManager entityManager = openEntityManager();
+		try {
+			return doMergeClusters(entityManager, target, losers, newUnclusteredRecords);
+		}
+		finally {
+			entityManager.close();
+		}
+	}
+
+	private static Cluster doMergeClusters(EntityManager entityManager, Cluster target, Collection<Cluster> losers,
+			Collection<Record> newUnclusteredRecords) {
 		entityManager.getTransaction().begin();
 
 		final Cluster managedTarget = entityManager.find(Cluster.class, target.getId());
