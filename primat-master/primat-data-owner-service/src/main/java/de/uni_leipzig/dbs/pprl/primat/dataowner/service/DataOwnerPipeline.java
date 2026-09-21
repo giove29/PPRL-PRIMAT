@@ -15,6 +15,7 @@ import de.uni_leipzig.dbs.pprl.primat.common.extraction.qgram.TrigramExtractor;
 import de.uni_leipzig.dbs.pprl.primat.common.model.NamedRecordSchemaConfiguration;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.common.model.RecordSchemaConfiguration;
+import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.IdAttribute;
 import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.NonQidAttributeType;
 import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.QidAttribute;
 import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.QidAttributeType;
@@ -185,6 +186,7 @@ public class DataOwnerPipeline {
 	public List<Record> run() throws IOException {
 		final RecordSchemaConfiguration schema = buildSchema();
 		final List<Record> records = recordSource.readAll(schema);
+		prefixRecordIds(records);
 		if (config.isDebug()) {
 			printFirstRecords("estratti dalla sorgente dati", records);
 		}
@@ -197,6 +199,13 @@ public class DataOwnerPipeline {
 		final Encoder encoder = new BloomFilterEncoder(List.of(buildRbfDefinition()), config.isDebug(),
 				config.getParty());
 		return encoder.encode(records);
+	}
+
+	/** Rende gli ID univoci tra sorgenti: id pubblicato = nome party (da JSON) + id locale. */
+	private void prefixRecordIds(List<Record> records) {
+		for (final Record record : records) {
+			record.setIdAttribute(new IdAttribute(config.getParty() + record.getId()));
+		}
 	}
 
 	/**
