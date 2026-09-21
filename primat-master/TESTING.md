@@ -10,7 +10,7 @@ Tutorial per costruire ed eseguire la pipeline (`primat-mqtt-common`, `primat-da
   MVN="C:/Program Files/JetBrains/IntelliJ IDEA <versione>/plugins/maven-plugin/lib/maven3/bin/mvn"
   JAVA_HOME="C:/Program Files/JetBrains/IntelliJ IDEA <versione>/jbr"
   ```
-- Broker MQTT: nessuna dipendenza esterna, Moquette è embedded e parte dentro il processo `LinkageUnitOrchestrator`.
+- Broker MQTT: nessuna installazione esterna, ma è un **processo indipendente** (Moquette, `EmbeddedBrokerLauncher.main`, modulo `primat-mqtt-common`), da avviare per primo — vedi sezione 2bis. Dal 2026-09-21 non è più embedded nella Linkage Unit.
 - **PostgreSQL**, per 4 delle 5 strategie di clustering (Center Clustering, MSCD-AP, Global Greedy, CLIP — ciascuna con il proprio database dedicato dal 2026-09-16/2026-09-17, vedi `ARCHITECTURE_FLOW.md`/`DATABASE_SCHEMA.md`): **1 solo container**, **4 database** al suo interno:
   ```bash
   docker run -d --name primat-postgres -e POSTGRES_USER=primat -e POSTGRES_PASSWORD=primat -p 5432:5432 postgres:16
@@ -31,6 +31,18 @@ Dalla root del reactor (`primat-master/primat-master`, quella con il `pom.xml` p
 ```
 
 `-am` costruisce anche i moduli da cui dipendono (`primat-common`, `primat-data-owner`, `primat-linkage-unit`).
+
+## 2bis. Avvio del broker MQTT (per primo)
+
+Un terminale dedicato, dalla root del reactor; resta in ascolto fino a Ctrl+C (porta opzionale, default 1883):
+
+```bash
+"$MVN" -pl primat-mqtt-common exec:java -Dexec.args="1883"
+```
+
+Output atteso: `Broker MQTT in ascolto su tcp://0.0.0.0:1883 (Ctrl+C per fermarlo)`. Il broker è non persistente (i messaggi non sopravvivono a un suo riavvio). Data Owner e Linkage Unit lo raggiungono tramite `mqttBrokerUrl` nel proprio JSON (deve puntare a host/porta del broker; se cambi la porta qui, cambiala in tutti i JSON).
+
+**Ordine di avvio**: il broker deve partire prima di tutto il resto, ma solo per la Linkage Unit — se manca, la LU fallisce dopo `mqtt.brokerConnectTimeoutSeconds` (default 30s) con `Broker MQTT non raggiungibile su ...`. I Data Owner invece ritentano all'infinito (ogni 2s) e si connettono appena il broker sale. Una volta up il broker, Data Owner e Linkage Unit possono partire in qualsiasi ordine: la LU si sottoscrive agli RBF prima di pubblicare e ripubblica il comando a ogni `rbfRepublishIntervalSeconds` finché tutti i Data Owner non rispondono.
 
 ## 3. Avvio dei Data Owner
 
@@ -58,7 +70,7 @@ Esempio di contenuto (`party_A.json`, abbreviato — vedi il file per lo schema 
 
 Un JSON non valido (file assente, sintassi errata, colonne inconsistenti, ...) termina il processo con `Errore di configurazione: ...` ed exit code 1, senza avviare la connessione MQTT.
 
-**Nota importante**: i Data Owner possono essere avviati PRIMA che il broker esista — `MqttClientWrapper.connect()` ritenta la connessione all'infinito (ogni 2s) finché il broker non è raggiungibile. Non serve un ordine di avvio preciso.
+**Nota importante**: i Data Owner possono essere avviati anche PRIMA del broker — `MqttClientWrapper.connect()` ritenta la connessione all'infinito (ogni 2s) finché non è raggiungibile. Il broker va comunque avviato (sezione 2bis) prima di far partire la Linkage Unit.
 
 Output atteso per ciascun Data Owner all'avvio: `[A] in ascolto su primat/do/A/cmd`.
 
@@ -69,6 +81,8 @@ Dal 2026-09-16 `LinkageUnitOrchestrator` è configurato via JSON (mirror del Dat
 ```bash
 "$MVN" -pl primat-linkage-unit-service exec:java -Dexec.args="src/main/resources/config/mscd_ap.json"
 ```
+
+Il JSON ha il campo obbligatorio top-level `"mqttBrokerUrl": "tcp://localhost:1883"` (identico ai Data Owner, endpoint del broker avviato nella sezione 2bis); la sezione opzionale `mqtt` contiene solo i tuning `brokerConnectTimeoutSeconds` (default 30), `rbfCollectionTimeoutSeconds` (30), `rbfRepublishIntervalSeconds` (3).
 
 Sostituire `mscd_ap.json` con `center_clustering.json` / `mcl.json` / `global_greedy.json` / `clip.json` per le altre 4 strategie (ciascuno un run a sé, ripetibile con gli stessi Data Owner senza riavviarli — basta rilanciare `exec:java` con un JSON diverso). `global_greedy.json`/`clip.json` richiedono party tutte `duplicateFree: true` (vincolo più stretto di MSCD-AP, che ne richiede solo una): un JSON con anche una sola party dirty viene rifiutato al caricamento con `LinkageUnitConfigException`.
 
@@ -111,7 +125,8 @@ Per cambiare invece la composizione delle party o la strategia della Linkage Uni
 
 ## 8. Troubleshooting rapido
 
-- **Timeout in `collectRbf`** (`Timeout in attesa degli RBF per il run ...: ricevuti da [...]`): il broker non è raggiungibile (porta 1883 occupata da un'altra istanza) o uno dei Data Owner non è stato avviato/è ancora in retry di connessione. Verificare che tutti i processi Data Owner attesi (uno per party dichiarata nel JSON della Linkage Unit) risultino "in ascolto" prima di avviare l'orchestratore, e che nessun altro processo occupi la porta 1883.
+- **`Broker MQTT non raggiungibile su tcp://...`** (Linkage Unit, esce dopo `mqtt.brokerConnectTimeoutSeconds`): il broker non è stato avviato o `mqttBrokerUrl` non combacia con host/porta del broker. Avviarlo (sezione 2bis) e riprovare.
+- **Timeout in `collectRbf`** (`Timeout in attesa degli RBF per il run ...: ricevuti da [...]`): uno dei Data Owner non è stato avviato/è ancora in retry di connessione, o il suo `mqttBrokerUrl` punta a un broker diverso da quello della LU. Verificare che tutti i processi Data Owner attesi (uno per party dichiarata nel JSON della Linkage Unit) risultino "in ascolto" prima di avviare l'orchestratore. Se il broker parte con `Address already in use`, la porta è occupata da un'altra istanza: fermarla o usare un'altra porta.
 - **Errore di connessione Postgres per Center Clustering/MSCD-AP/Global Greedy/CLIP** (`PersistenceException`/`Connection refused`): il ramo MCL non dipende da Postgres, quindi resta disponibile anche senza DB; le altre 4 strategie lo richiedono, ciascuna sul proprio database (vedi sezione 1). Verificare `docker ps` (container `primat-postgres` in esecuzione) e che le credenziali/il nome DB nel JSON (`database.{url,user,password}`) combacino con quelli creati nel container.
 - **`Campo obbligatorio 'database' mancante`**: il JSON usa `clusteringMethod` diverso da `MCL` ma non ha una sezione `database` — obbligatoria per le 4 strategie persistenti, vedi sezione 4.
 

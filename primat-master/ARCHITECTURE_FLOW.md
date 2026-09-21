@@ -6,7 +6,7 @@ Descrive l'ordine reale di esecuzione delle classi della pipeline PPRL (`primat-
 
 1. `DataOwnerService.main(args)` — legge `<configJsonPath>` (unico argomento), `DataOwnerConfigLoader.load(...)` legge e valida il JSON producendo `DataOwnerConfig` (party, sorgente dati, schema colonne, tuning RBF, `mqttBrokerUrl`; fissa anche `mqttClientId = "data-owner-" + party`); un JSON non valido termina il processo con un messaggio d'errore leggibile (`DataOwnerConfigException`), senza stack trace grezzo.
 2. `DataOwnerService.start()`:
-   - `MqttClientWrapper.connect()` — si connette al broker; se non è ancora raggiungibile, **ritenta all'infinito** ogni 2s (nessun limite di tentativi: i Data Owner sono pensati per partire prima dell'orchestratore).
+   - `MqttClientWrapper.connect()` — si connette al broker; se non è ancora raggiungibile, **ritenta all'infinito** ogni 2s (nessun limite di tentativi: il broker è un processo indipendente, `EmbeddedBrokerLauncher.main`, e i Data Owner possono partire anche prima di lui).
    - `client.subscribe(MqttTopics.commandTopic(party), handler)` — si mette in ascolto su `primat/do/{party}/cmd`.
 3. `DataOwnerService.awaitForever()` — blocca il thread principale; la gestione dei messaggi in arrivo avviene sul thread di rete di Paho.
 4. **Alla ricezione di uno `StartCommand`** (deserializzato da Gson) → `DataOwnerService.handleStartCommand(command)`:
@@ -25,8 +25,7 @@ Descrive l'ordine reale di esecuzione delle classi della pipeline PPRL (`primat-
 
 1. `LinkageUnitOrchestrator.main(args)` — legge `<configJsonPath>` (unico argomento, dal 2026-09-16), `LinkageUnitConfigLoader.load(...)` legge e valida il JSON producendo `LinkageUnitConfig` (party attese, `clusteringMethod` — la sola fonte di verità su quale delle 6 strategie gira, niente più auto-routing dirty/clean — soglia di similarità, parametri LSH/MQTT/cluster/AP/MCL/Center Clustering/Global Greedy/CLIP, credenziali del DB dedicato se la strategia è persistente); un JSON non valido termina il processo con `Errore di configurazione: ...` (`LinkageUnitConfigException`), senza stack trace grezzo. Istanzia poi l'orchestratore con quella config.
 2. `LinkageUnitOrchestrator.start()`:
-   - `EmbeddedBrokerLauncher.start()` — avvia il broker Moquette embedded sulla porta 1883 (persistenza disattivata)
-   - `client.connect()` — il client orchestratore si connette al proprio broker appena avviato
+   - `client.connect(config.getBrokerConnectTimeoutSeconds())` — il client orchestratore si connette al broker esterno (`mqttBrokerUrl` top-level del JSON, già avviato a parte con `EmbeddedBrokerLauncher.main`, Moquette non persistente); se non è raggiungibile entro `mqtt.brokerConnectTimeoutSeconds` (default 30s) lancia `IllegalStateException`. Dal 2026-09-21 la LU non avvia più il broker.
 3. `LinkageUnitOrchestrator.runOnce()` (un solo run per processo dal 2026-09-16; per un secondo run si rilancia il processo, eventualmente con un JSON diverso):
    1. `collectRbf(runId)`:
       - sottoscrive `MqttTopics.rbfTopicWildcard(runId)` (`primat/lu/{runId}/rbf/+`)

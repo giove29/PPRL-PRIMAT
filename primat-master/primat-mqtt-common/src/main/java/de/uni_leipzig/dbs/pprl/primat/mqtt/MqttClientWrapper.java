@@ -42,26 +42,40 @@ public class MqttClientWrapper {
 
 	/**
 	 * Connette al broker, riprovando a intervalli fissi finché non riesce.
-	 * I Data Owner sono pensati per essere avviati indipendentemente e prima
-	 * della Linkage Unit (che possiede il broker embedded), quindi il primo
-	 * tentativo di connessione può normalmente fallire finché il broker non
-	 * viene avviato: a differenza della riconnessione automatica di Paho (attiva
-	 * solo dopo una connessione già riuscita), qui il retry copre anche il primo
-	 * tentativo.
+	 * Il broker e' un processo indipendente, quindi il primo tentativo puo'
+	 * fallire finche' non e' stato avviato: a differenza della riconnessione
+	 * automatica di Paho (attiva solo dopo una connessione gia' riuscita), qui
+	 * il retry copre anche il primo tentativo.
 	 *
 	 * @throws MqttException se il thread viene interrotto durante l'attesa tra
 	 *                        un tentativo e il successivo
 	 */
 	public void connect() throws MqttException {
+		connect(Long.MAX_VALUE);
+	}
+
+	/**
+	 * Come {@link #connect()}, ma rinuncia dopo {@code maxWaitSeconds}.
+	 *
+	 * @throws MqttException          se il thread viene interrotto durante l'attesa
+	 * @throws IllegalStateException se il broker non e' raggiungibile entro il timeout
+	 */
+	public void connect(long maxWaitSeconds) throws MqttException {
 		final MqttConnectOptions options = new MqttConnectOptions();
 		options.setCleanSession(true);
 		options.setAutomaticReconnect(true);
 
+		final long deadlineNanos = maxWaitSeconds >= Long.MAX_VALUE / 1_000_000_000L ? Long.MAX_VALUE
+				: System.nanoTime() + maxWaitSeconds * 1_000_000_000L;
 		while (true) {
 			try {
 				client.connect(options);
 				return;
 			} catch (MqttException e) {
+				if (deadlineNanos != Long.MAX_VALUE && System.nanoTime() - deadlineNanos >= 0) {
+					throw new IllegalStateException("Broker MQTT non raggiungibile su " + client.getServerURI()
+							+ " entro " + maxWaitSeconds + "s: avviare prima il broker (vedi TESTING.md)", e);
+				}
 				try {
 					Thread.sleep(RETRY_DELAY_MILLIS);
 				} catch (InterruptedException ie) {

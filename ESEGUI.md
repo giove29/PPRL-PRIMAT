@@ -55,7 +55,8 @@ Mirror esatto di `DataOwnerConfigLoader`/`DataOwnerConfig`/`DataOwnerConfigExcep
 | `clusteringMethod` | enum (4 valori) | **sì** | — |
 | `similarityThreshold` | double (0,1] | no | `0.6` |
 | `blocking.jaccardLsh.{keySize,keys,valueRange,seed}` | int/long | no | `4,30,1024,42` |
-| `mqtt.{brokerUrl,rbfCollectionTimeoutSeconds,rbfRepublishIntervalSeconds}` | string/long | no | `"tcp://localhost:1883"`, `30`, `3` |
+| `mqttBrokerUrl` (top-level, dal 2026-09-21, come i Data Owner) | string | **sì** | — |
+| `mqtt.{brokerConnectTimeoutSeconds,rbfCollectionTimeoutSeconds,rbfRepublishIntervalSeconds}` | long | no | `30`, `30`, `3` |
 | `cluster.{blockingKeyStrategy,representantStrategy}` | enum | no | `UNION`, `RETAIN_FIRST` |
 | `persistence.enabled` | boolean | no | `true` se metodo≠MCL; **errore** se `true` con MCL |
 | `database.{url,user,password}` | string | **sì se metodo≠MCL** | — (nessun default: mai scrivere per sbaglio sul DB di qualcun altro) |

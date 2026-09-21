@@ -13,6 +13,7 @@ import java.util.List;
  */
 public class LinkageUnitJsonConfig {
 
+	private String mqttBrokerUrl;
 	private List<PartyJsonConfig> parties;
 	private ClusteringMethod clusteringMethod;
 	private Double similarityThreshold;
@@ -27,6 +28,10 @@ public class LinkageUnitJsonConfig {
 	private MclJsonConfig mcl;
 	private GlobalGreedyJsonConfig globalGreedy;
 	private ClipJsonConfig clip;
+
+	public String getMqttBrokerUrl() {
+		return mqttBrokerUrl;
+	}
 
 	public List<PartyJsonConfig> getParties() {
 		return parties;

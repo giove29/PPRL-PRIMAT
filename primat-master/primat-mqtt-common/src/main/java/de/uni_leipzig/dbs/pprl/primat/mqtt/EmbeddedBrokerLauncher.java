@@ -11,9 +11,8 @@ import io.moquette.broker.config.IConfig;
 import io.moquette.broker.config.MemoryConfig;
 
 /**
- * Avvia/ferma in-process un broker MQTT Moquette, cosi' la Linkage Unit
- * Orchestrator puo' eseguire il demo end-to-end senza dipendenze da un broker
- * MQTT esterno installato separatamente.
+ * Broker MQTT Moquette senza installazioni esterne: avviabile come processo
+ * autonomo ({@link #main}) o in-process (test).
  */
 public class EmbeddedBrokerLauncher {
 
@@ -48,5 +47,19 @@ public class EmbeddedBrokerLauncher {
 	 */
 	public void stop() {
 		server.stopServer();
+	}
+
+	/**
+	 * Avvia il broker come processo autonomo e resta in ascolto fino a Ctrl+C.
+	 *
+	 * @param args {@code [porta]}, default 1883
+	 */
+	public static void main(String[] args) throws Exception {
+		final int port = args.length > 0 ? Integer.parseInt(args[0]) : 1883;
+		final EmbeddedBrokerLauncher broker = new EmbeddedBrokerLauncher(port);
+		broker.start();
+		Runtime.getRuntime().addShutdownHook(new Thread(broker::stop));
+		System.out.println("Broker MQTT in ascolto su tcp://0.0.0.0:" + port + " (Ctrl+C per fermarlo)");
+		Thread.currentThread().join();
 	}
 }

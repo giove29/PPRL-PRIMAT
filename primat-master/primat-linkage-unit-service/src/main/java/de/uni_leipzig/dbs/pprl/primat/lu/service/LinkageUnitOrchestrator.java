@@ -35,7 +35,6 @@ import de.uni_leipzig.dbs.pprl.primat.lu.service.MultiSourceLinkage.LinkageOutco
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.ClusteringMethod;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.LinkageUnitConfigException;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.LinkageUnitConfigLoader;
-import de.uni_leipzig.dbs.pprl.primat.mqtt.EmbeddedBrokerLauncher;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttClientWrapper;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttTopics;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.RbfCodec;
@@ -43,8 +42,8 @@ import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.RbfPayload;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.StartCommand;
 
 /**
- * Servizio long-running lato Linkage Unit: avvia il broker MQTT embedded,
- * invia il comando di avvio a tutti i Data Owner registrati, raccoglie i loro
+ * Servizio long-running lato Linkage Unit: si connette al broker MQTT esterno
+ * (da avviare prima), invia il comando di avvio a tutti i Data Owner registrati, raccoglie i loro
  * RBF (uno per party, su topic separati) ed esegue il blocking JaccardLSH
  * (MinHash) seguito da UNA sola strategia di clustering sul risultato, scelta
  * dalla config JSON caricata da {@link LinkageUnitConfigLoader} — sola fonte
@@ -53,16 +52,6 @@ import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.StartCommand;
  * Owner debbano essere riavviati.
  */
 public class LinkageUnitOrchestrator {
-
-	/**
-	 * Porta del broker MQTT embedded. Indipendente dal {@code mqtt.brokerUrl}
-	 * della config (quello e' l'endpoint a cui il client si connette): il
-	 * default di entrambi coincide ("tcp://localhost:1883"), ma se
-	 * {@code mqtt.brokerUrl} viene cambiato in config resta responsabilità di
-	 * chi configura assicurarsi che punti a un broker realmente in ascolto su
-	 * questa porta (o a uno esterno già avviato).
-	 */
-	private static final int BROKER_PORT = 1883;
 
 	private final LinkageUnitConfig config;
 	private final MqttClientWrapper client;
@@ -103,14 +92,13 @@ public class LinkageUnitOrchestrator {
 	}
 
 	/**
-	 * Avvia il broker embedded e connette il client orchestratore.
+	 * Connette il client orchestratore al broker esterno (da avviare prima).
 	 *
-	 * @throws Exception se l'avvio del broker o la connessione falliscono
+	 * @throws Exception se il broker non e' raggiungibile entro
+	 *                    {@code mqtt.brokerConnectTimeoutSeconds}
 	 */
 	public void start() throws Exception {
-		final EmbeddedBrokerLauncher broker = new EmbeddedBrokerLauncher(BROKER_PORT);
-		broker.start();
-		client.connect();
+		client.connect(config.getBrokerConnectTimeoutSeconds());
 	}
 
 	/**
@@ -252,7 +240,7 @@ public class LinkageUnitOrchestrator {
 		// Il comando viene ripubblicato periodicamente finché non arrivano tutti gli
 		// RBF attesi: un Data Owner avviato di recente potrebbe ancora essere nel suo
 		// ciclo di retry di connessione (vedi MqttClientWrapper#connect) e perdere
-		// così il primo comando pubblicato subito dopo l'avvio del broker embedded.
+		// così il primo comando pubblicato subito dopo la connessione al broker.
 		// I comandi ripubblicati sono innocui: un Data Owner che ha già risposto
 		// pubblica di nuovo lo stesso RBF, ignorato da putIfAbsent qui sotto.
 		final StartCommand command = new StartCommand(runId, System.currentTimeMillis());

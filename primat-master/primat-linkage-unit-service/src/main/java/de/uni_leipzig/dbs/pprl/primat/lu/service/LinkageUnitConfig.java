@@ -36,6 +36,7 @@ public class LinkageUnitConfig {
 	private final int lshValueRange;
 	private final long lshSeed;
 	private final String mqttBrokerUrl;
+	private final long brokerConnectTimeoutSeconds;
 	private final long rbfCollectionTimeoutSeconds;
 	private final long rbfRepublishIntervalSeconds;
 	private final ClusterFactory clusterFactory;
@@ -66,7 +67,7 @@ public class LinkageUnitConfig {
 	 */
 	public LinkageUnitConfig(List<Party> parties, ClusteringMethod clusteringMethod, double similarityThreshold,
 			Integer rbfSize, int lshKeySize, int lshKeys, int lshValueRange, long lshSeed, String mqttBrokerUrl,
-			long rbfCollectionTimeoutSeconds, long rbfRepublishIntervalSeconds, ClusterFactory clusterFactory,
+			long brokerConnectTimeoutSeconds, long rbfCollectionTimeoutSeconds, long rbfRepublishIntervalSeconds, ClusterFactory clusterFactory,
 			boolean persistenceEnabled, String csvOutputPath, CenterClusteringConfig centerClusteringConfig,
 			ApConfig apConfig, MclConfig mclConfig, GlobalGreedyConfig globalGreedyConfig, ClipConfig clipConfig,
 			String dbPersistenceUnitName, String dbUrl, String dbUser, String dbPassword) {
@@ -79,6 +80,7 @@ public class LinkageUnitConfig {
 		this.lshValueRange = lshValueRange;
 		this.lshSeed = lshSeed;
 		this.mqttBrokerUrl = mqttBrokerUrl;
+		this.brokerConnectTimeoutSeconds = brokerConnectTimeoutSeconds;
 		this.rbfCollectionTimeoutSeconds = rbfCollectionTimeoutSeconds;
 		this.rbfRepublishIntervalSeconds = rbfRepublishIntervalSeconds;
 		this.clusterFactory = clusterFactory;
@@ -130,6 +132,10 @@ public class LinkageUnitConfig {
 
 	public String getMqttBrokerUrl() {
 		return mqttBrokerUrl;
+	}
+
+	public long getBrokerConnectTimeoutSeconds() {
+		return brokerConnectTimeoutSeconds;
 	}
 
 	public long getRbfCollectionTimeoutSeconds() {

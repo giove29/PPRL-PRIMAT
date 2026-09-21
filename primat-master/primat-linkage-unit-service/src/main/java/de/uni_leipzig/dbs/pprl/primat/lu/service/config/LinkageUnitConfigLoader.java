@@ -45,7 +45,7 @@ public final class LinkageUnitConfigLoader {
 	private static final int DEFAULT_LSH_KEYS = 30;
 	private static final int DEFAULT_LSH_VALUE_RANGE = 1024;
 	private static final long DEFAULT_LSH_SEED = 42L;
-	private static final String DEFAULT_MQTT_BROKER_URL = "tcp://localhost:1883";
+	private static final long DEFAULT_BROKER_CONNECT_TIMEOUT_SECONDS = 30L;
 	private static final long DEFAULT_RBF_COLLECTION_TIMEOUT_SECONDS = 30L;
 	private static final long DEFAULT_RBF_REPUBLISH_INTERVAL_SECONDS = 3L;
 	/**
@@ -91,8 +91,10 @@ public final class LinkageUnitConfigLoader {
 		final long lshSeed = jaccardLsh != null && jaccardLsh.getSeed() != null ? jaccardLsh.getSeed()
 				: DEFAULT_LSH_SEED;
 		final MqttJsonConfig mqtt = raw.getMqtt();
-		final String mqttBrokerUrl = mqtt != null && mqtt.getBrokerUrl() != null ? mqtt.getBrokerUrl()
-				: DEFAULT_MQTT_BROKER_URL;
+		final String mqttBrokerUrl = raw.getMqttBrokerUrl();
+		final long brokerConnectTimeoutSeconds = mqtt != null && mqtt.getBrokerConnectTimeoutSeconds() != null
+				? mqtt.getBrokerConnectTimeoutSeconds()
+				: DEFAULT_BROKER_CONNECT_TIMEOUT_SECONDS;
 		final long rbfCollectionTimeoutSeconds = mqtt != null && mqtt.getRbfCollectionTimeoutSeconds() != null
 				? mqtt.getRbfCollectionTimeoutSeconds()
 				: DEFAULT_RBF_COLLECTION_TIMEOUT_SECONDS;
@@ -119,7 +121,7 @@ public final class LinkageUnitConfigLoader {
 		final ClipConfig clipConfig = resolveClipConfig(raw.getClip());
 
 		return new LinkageUnitConfig(parties, method, similarityThreshold, raw.getRbfSize(), lsh[0], lsh[1], lsh[2],
-				lshSeed, mqttBrokerUrl, rbfCollectionTimeoutSeconds, rbfRepublishIntervalSeconds, clusterFactory,
+				lshSeed, mqttBrokerUrl, brokerConnectTimeoutSeconds, rbfCollectionTimeoutSeconds, rbfRepublishIntervalSeconds, clusterFactory,
 				persistenceEnabled, csvOutputPath, centerClusteringConfig, apConfig, mclConfig,
 				globalGreedyConfig, clipConfig, dbParams[0], dbParams[1], dbParams[2], dbParams[3]);
 	}
@@ -152,6 +154,9 @@ public final class LinkageUnitConfigLoader {
 	}
 
 	private static void validateTopLevel(LinkageUnitJsonConfig raw, Path jsonPath) throws LinkageUnitConfigException {
+		if (raw.getMqttBrokerUrl() == null || raw.getMqttBrokerUrl().isBlank()) {
+			throw new LinkageUnitConfigException("Campo obbligatorio 'mqttBrokerUrl' mancante o vuoto in " + jsonPath);
+		}
 		if (raw.getParties() == null || raw.getParties().isEmpty()) {
 			throw new LinkageUnitConfigException("Campo obbligatorio 'parties' mancante o vuoto in " + jsonPath);
 		}
