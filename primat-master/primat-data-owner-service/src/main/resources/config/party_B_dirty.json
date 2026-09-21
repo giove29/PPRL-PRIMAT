@@ -1,0 +1,26 @@
+{
+  "party": "B",
+  "debug": true,
+  "mqttBrokerUrl": "tcp://localhost:1883",
+  "dataSource": {
+    "type": "CSV",
+    "csv": {
+      "filePath": "primat-examples/src/main/resources/synthetic_ncvr/party_B_dirty.csv"
+    }
+  },
+  "bloomFilter": {
+    "length": 1024,
+    "hardeningChain": []
+  },
+  "columns": [
+    { "index": 0, "name": "PARTY", "role": "PARTY" },
+    { "index": 1, "name": "GLOBAL_ID", "role": "GLOBAL_ID" },
+    { "index": 2, "name": "ID", "role": "ID" },
+    { "index": 3, "name": "FN", "role": "QID", "dataType": "TEXT", "hashFunctions": 24, "salt": "FN_" },
+    { "index": 4, "name": "MN", "role": "QID", "dataType": "TEXT", "hashFunctions": 6, "salt": "MN_" },
+    { "index": 5, "name": "LN", "role": "QID", "dataType": "TEXT", "hashFunctions": 25, "salt": "LN_" },
+    { "index": 6, "name": "YOB", "role": "QID", "dataType": "NUMERIC", "hashFunctions": 25, "salt": "YOB_" },
+    { "index": 7, "name": "BIRTH_PLACE", "role": "QID", "dataType": "TEXT", "hashFunctions": 6, "salt": "BIRTHPLACE_" },
+    { "index": 9, "name": "CITY", "role": "QID", "dataType": "TEXT", "hashFunctions": 4, "salt": "CITY_" }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "parties": [
+    { "name": "A", "duplicateFree": true },
+    { "name": "B", "duplicateFree": false },
+    { "name": "C", "duplicateFree": false }
+  ],
+  "clusteringMethod": "CENTER_CLUSTERING",
+  "similarityThreshold": 0.75,
+  "blocking": {
+    "jaccardLsh": {
+      "keySize": 8,
+      "keys": 20
+    }
+  },
+  "persistence": {
+    "enabled": true
+  },
+  "database": {
+    "url": "jdbc:postgresql://localhost:5432/primat_center_clustering",
+    "user": "primat",
+    "password": "primat"
+  }
+}

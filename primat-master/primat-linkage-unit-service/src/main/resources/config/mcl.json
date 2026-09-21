@@ -1,0 +1,19 @@
+{
+  "parties": [
+    { "name": "A", "duplicateFree": false },
+    { "name": "B", "duplicateFree": false },
+    { "name": "C", "duplicateFree": false }
+  ],
+  "clusteringMethod": "MCL",
+  "similarityThreshold": 0.75,
+  "blocking": {
+    "jaccardLsh": {
+      "keySize": 8,
+      "keys": 20
+    }
+  },
+  "persistence": {
+    "enabled": false,
+    "csvOutputPath": "mcl_debug_output.csv"
+  }
+}

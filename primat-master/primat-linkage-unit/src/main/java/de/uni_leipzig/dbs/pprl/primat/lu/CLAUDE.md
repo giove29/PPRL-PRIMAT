@@ -1,0 +1,16 @@
+# Indice del package Linkage Unit
+- `/blocking`: Metodi di blocco avanzati per ridurre lo spazio di ricerca (es. Standard, LSH, Sorted Neighborhood).
+- `/classification`: Algoritmi di classificazione (supervisionata/non) per identificare i match.
+- `/database`: Interfacce e repository per la persistenza su database relazionali o NoSQL. `DbConnection` (dal 2026-09-16 una classe normale, non più un enum singleton — costruttore `DbConnection(persistenceUnitName, jdbcUrl, jdbcUser, jdbcPassword)`, una istanza per ciascuna delle 4 persistence-unit dedicate in `primat-linkage-unit/src/main/resources/META-INF/persistence.xml` (dal 2026-09-21, erano 5 dal 2026-09-17, 3 dal 2026-09-16), vedi root `CLAUDE.md`).
+- `/distance_function`: Funzioni per calcolare distanze stringa/numeriche (es. Levenshtein, Jaro-Winkler).
+- `/evaluation`: Sistemi e metriche per valutare l'accuratezza rispetto a un ground-truth (Precision, Recall, F-Measure).
+- `/linkage_result`: Classi che rappresentano e aggregano l'output finale dei match.
+- `/matching`: Core per l'esecuzione del task, combina blocking e classificazione.
+- `/model`: Modelli dati specifici utilizzati nelle fasi della linkage unit.
+- `/postprocessing`: Operazioni post-linkage, come il raffinamento dei cluster e il mapping uno-a-uno. Contiene anche `MultipartiteClusteringStrategy` (interfaccia per il clustering su grafo N-ario unico, sibling di `Postprocessor`), il sotto-package `/postprocessing/markov_clustering` (`MarkovClusteringEngine`, `MarkovClusteringPostprocessor`, `data_structures/MclConfig` — Markov Clustering, non persistente; vedi `CLAUDE.md` root), il sotto-package `/postprocessing/center_clustering` (`CenterClusteringEngine`, `CenterClusteringPostprocessor`, `data_structures/CenterClusteringConfig` — Center Clustering, greedy a singola passata e deterministico, cluster "a stella" non transitivi, persistente; vedi bullet 2026-09-16 in `CLAUDE.md` root), il sotto-package condiviso `/postprocessing/priority_clustering` (`EdgePriorityFunction`, `PriorityClusteringEngine` — motore puro union-find con vincolo source-consistency, usato sia da Global Greedy sia da CLIP), il sotto-package `/postprocessing/global_greedy` (`GlobalGreedyClusteringPostprocessor`, `data_structures/GlobalGreedyConfig` — ordina gli archi per similarità grezza decrescente) e il sotto-package `/postprocessing/clip` (`ClipClusteringPostprocessor`, `ClipEdgePriorityFunction`, `data_structures/ClipConfig` — priorità pesata similarità/link-degree/link-strength, riusa `LinkStrength`; vedi bullet 2026-09-17 in `CLAUDE.md` root per entrambi). Quale strategia gira è dichiarato dalla config JSON della Linkage Unit (`primat-linkage-unit-service`), non più auto-derivato dalla composizione dirty/clean delle party.
+- `/quality_estimation`: Stimatori matematici e analitici per valutare la qualità attesa dei risultati (senza ground truth).
+- `/similarity_calculation`: Gestione del calcolo dei vettori di similarità combinati tra record.
+- `/similarity_classification`: Modelli per l'integrazione di regole basate su soglie di similarità.
+- `/similarity_function`: Metriche specializzate per calcolare score di similarità.
+- `/similarity_vector`: Strutture vettoriali utili al machine learning per i punteggi aggregati.
+- `/utils`: Utilità di supporto specifiche all'elaborazione del record linkage.

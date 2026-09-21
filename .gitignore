@@ -1,0 +1,45 @@
+# Build output (Maven, all modules)
+**/target/
+
+# Compiled classes
+*.class
+
+# Java packages
+*.jar
+*.war
+*.ear
+
+# IDE - Eclipse
+**/.classpath
+**/.project
+**/.settings/
+
+# IDE - IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Python
+**/__pycache__/
+*.pyc
+**/venv/
+**/.venv/
+
+# Logs / debug output
+*.log
+*.lck
+mcl_debug_output.csv
+temp_debug.py
+temp_debug_output.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Maven
+pom.xml.versionsBackup
+release.properties

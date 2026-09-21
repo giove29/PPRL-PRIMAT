@@ -1,0 +1,13 @@
+/primat-attack
+/primat-data-generator-corruptor
+/primat-data-owner-gui
+/primat-evaluation
+/primat-linkage-unit-gui
+/primat-reference
+/target
+venv/
+pom.xml.versionsBackup
+*.iml
+*.log
+*.lck
+/.idea

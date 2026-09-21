@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence version="2.0"
+	xmlns="http://java.sun.com/xml/ns/persistence"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://java.sun.com/xml/ns/persistence http://java.sun.com/xml/ns/persistence/persistence_2_0.xsd">
+
+	<!-- 4 persistence-unit distinte, una per strategia di clustering
+	     persistente (Center Clustering / MSCD-AP /
+	     Global Greedy / CLIP), stessa lista di classi ripetuta identica in
+	     ognuna. MCL non e' persistente, nessuna persistence-unit per MCL.
+	     Global Greedy e CLIP hanno ciascuna la propria PU dedicata (non
+	     riusano quella di Center Clustering): PersistentLinkTableBuilder puo'
+	     solo fondere cluster storici con quelli freschi, mai validarli, quindi
+	     pescare candidati da uno storico che non impone mai source-consistency
+	     rischierebbe di propagare violazioni che il loro union-find deve
+	     garantire di non creare mai. Gli URL/utente/password qui sotto sono
+	     solo i default per chi apre il modulo da IDE senza passare dalla
+	     config JSON della Linkage Unit: a runtime vengono sempre sovrascritti
+	     dai valori di "database.*" della config (vedi DbConnection). -->
+
+	<persistence-unit name="PrimatCenterClustering"
+		transaction-type="RESOURCE_LOCAL">
+		<provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
+
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.QidAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.BitSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.StringAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.NumericAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.DateAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.IntegerSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.XorBitSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.XorBitSet</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.BlockingKeyAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Party</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Cluster</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.CountingBloomFilter</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Record</class>
+
+		<properties>
+			<property name="javax.persistence.jdbc.driver" value="org.postgresql.Driver" />
+			<property name="javax.persistence.jdbc.url"
+				value="jdbc:postgresql://localhost:5432/primat_center_clustering" />
+			<property name="javax.persistence.jdbc.user" value="primat" />
+			<property name="javax.persistence.jdbc.password" value="primat" />
+
+			<property name="hibernate.dialect" value="org.hibernate.dialect.PostgreSQL95Dialect" />
+			<property name="hibernate.archive.autodetection" value="class, hbm" />
+
+			<!-- Valore di default: il logging SQL reale e' controllato da
+			     DbConnection.SQL_DEBUG_LOGGING, che sovrascrive queste due
+			     proprieta' a runtime. -->
+			<property name="hibernate.show_sql" value="false" />
+			<property name="hibernate.format_sql" value="false" />
+			<property name="hibernate.hbm2ddl.auto" value="update" />
+		</properties>
+	</persistence-unit>
+
+	<persistence-unit name="PrimatMscdAp"
+		transaction-type="RESOURCE_LOCAL">
+		<provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
+
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.QidAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.BitSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.StringAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.NumericAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.DateAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.IntegerSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.XorBitSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.XorBitSet</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.BlockingKeyAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Party</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Cluster</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.CountingBloomFilter</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Record</class>
+
+		<properties>
+			<property name="javax.persistence.jdbc.driver" value="org.postgresql.Driver" />
+			<property name="javax.persistence.jdbc.url"
+				value="jdbc:postgresql://localhost:5432/primat_mscd_ap" />
+			<property name="javax.persistence.jdbc.user" value="primat" />
+			<property name="javax.persistence.jdbc.password" value="primat" />
+
+			<property name="hibernate.dialect" value="org.hibernate.dialect.PostgreSQL95Dialect" />
+			<property name="hibernate.archive.autodetection" value="class, hbm" />
+
+			<property name="hibernate.show_sql" value="false" />
+			<property name="hibernate.format_sql" value="false" />
+			<property name="hibernate.hbm2ddl.auto" value="update" />
+		</properties>
+	</persistence-unit>
+
+	<persistence-unit name="PrimatGlobalGreedy"
+		transaction-type="RESOURCE_LOCAL">
+		<provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
+
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.QidAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.BitSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.StringAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.NumericAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.DateAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.IntegerSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.XorBitSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.XorBitSet</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.BlockingKeyAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Party</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Cluster</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.CountingBloomFilter</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Record</class>
+
+		<properties>
+			<property name="javax.persistence.jdbc.driver" value="org.postgresql.Driver" />
+			<property name="javax.persistence.jdbc.url"
+				value="jdbc:postgresql://localhost:5432/primat_global_greedy" />
+			<property name="javax.persistence.jdbc.user" value="primat" />
+			<property name="javax.persistence.jdbc.password" value="primat" />
+
+			<property name="hibernate.dialect" value="org.hibernate.dialect.PostgreSQL95Dialect" />
+			<property name="hibernate.archive.autodetection" value="class, hbm" />
+
+			<property name="hibernate.show_sql" value="false" />
+			<property name="hibernate.format_sql" value="false" />
+			<property name="hibernate.hbm2ddl.auto" value="update" />
+		</properties>
+	</persistence-unit>
+
+	<persistence-unit name="PrimatClip"
+		transaction-type="RESOURCE_LOCAL">
+		<provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
+
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.QidAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.BitSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.StringAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.NumericAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.DateAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.IntegerSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.XorBitSetAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.XorBitSet</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.attributes.BlockingKeyAttribute</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Party</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Cluster</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.CountingBloomFilter</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Record</class>
+
+		<properties>
+			<property name="javax.persistence.jdbc.driver" value="org.postgresql.Driver" />
+			<property name="javax.persistence.jdbc.url"
+				value="jdbc:postgresql://localhost:5432/primat_clip" />
+			<property name="javax.persistence.jdbc.user" value="primat" />
+			<property name="javax.persistence.jdbc.password" value="primat" />
+
+			<property name="hibernate.dialect" value="org.hibernate.dialect.PostgreSQL95Dialect" />
+			<property name="hibernate.archive.autodetection" value="class, hbm" />
+
+			<property name="hibernate.show_sql" value="false" />
+			<property name="hibernate.format_sql" value="false" />
+			<property name="hibernate.hbm2ddl.auto" value="update" />
+		</properties>
+	</persistence-unit>
+</persistence>
