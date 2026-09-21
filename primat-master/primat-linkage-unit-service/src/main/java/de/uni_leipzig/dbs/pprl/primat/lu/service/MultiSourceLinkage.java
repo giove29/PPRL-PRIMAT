@@ -89,6 +89,12 @@ public class MultiSourceLinkage {
 	 */
 	private long lastClusteringElapsedNanos;
 
+	private ProgressListener classificationProgress = ProgressListener.NOOP;
+
+	public void setClassificationProgress(ProgressListener listener) {
+		this.classificationProgress = listener;
+	}
+
 	private ProgressListener clusteringProgress = ProgressListener.NOOP;
 
 	private ProgressListener persistenceProgress = ProgressListener.NOOP;
@@ -366,20 +372,35 @@ public class MultiSourceLinkage {
 	 */
 	private List<LinkedPair<Record>> classifyAndCluster(Map<Party, Collection<Record>> input, Blocker blocker,
 			MultipartiteClusteringStrategy clusterer, double threshold) {
+		long phaseStart = System.nanoTime();
+		System.out.println("=== Valutazione del blocking in corso ===");
 		final Collection<Block> blocks = blocker.getBlocks(input);
 		final long maxComparisons = PerformanceMetrics.getMaxComparisons(input, ComparisonStrategy.SOURCE_CONSISTENT);
 		final long expectedMatches = countGroundTruthMatches(input);
 		lastBlockingEvaluation = new BlockingEvaluator(new IdEqualityTrueMatchChecker())
 				.evaluate(blocks, maxComparisons, expectedMatches);
+		System.out.println("=== Valutazione del blocking completata in " + elapsedMillis(phaseStart) + " ms ===");
 
+		phaseStart = System.nanoTime();
+		System.out.println("=== Classificazione (calcolo similarità) in corso ===");
 		final LinkageResult<Record> linkageResult = classify(input, blocker, threshold);
+		System.out.println("=== Classificazione completata in " + elapsedMillis(phaseStart) + " ms ===");
+
+		phaseStart = System.nanoTime();
+		System.out.println("=== Costruzione del grafo di similarità in corso ===");
 		final MultiPartiteSimilarityGraph graph = MultiPartiteSimilarityGraph.from(linkageResult);
+		System.out.println("=== Grafo di similarità costruito in " + elapsedMillis(phaseStart) + " ms ===");
+		System.out.println("=== Clustering in corso (include il calcolo delle componenti connesse) ===");
 		final long clusteringStartNanos = System.nanoTime();
 		clusterer.setProgressListener(clusteringProgress);
 		final List<LinkedPair<Record>> matches = clusterer.cluster(graph);
 		lastClusteringElapsedNanos = System.nanoTime() - clusteringStartNanos;
 		onClusteringFinished.run();
 		return matches;
+	}
+
+	private static long elapsedMillis(long startNanos) {
+		return (System.nanoTime() - startNanos) / 1_000_000;
 	}
 
 	/**
@@ -457,9 +478,10 @@ public class MultiSourceLinkage {
 		final NonMatchStrategyFactory<Record> nonMatchFactory = new IgnoreNonMatchesStrategyFactory<>();
 		final LinkageResultPartitionFactory<Record> partitionFactory = new LinkageResultPartitionFactory<>(
 				matchFactory, nonMatchFactory);
-		final SimilarityClassification similarityClassification = new BatchSimilarityClassification(
+		final BatchSimilarityClassification similarityClassification = new BatchSimilarityClassification(
 				comparisonStrategy, similarityCalculator, classificator, RedundancyCheckStrategy.MATCH_TWICE,
 				partitionFactory);
+		similarityClassification.setProgressListener(classificationProgress);
 		final ThresholdClassificationRefinement thresholdRefinement = new NoThresholdRefinement();
 
 		// Nessun postprocessing qui: il clustering vero e proprio viene applicato

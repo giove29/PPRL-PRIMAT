@@ -30,6 +30,7 @@ import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.LinkedPair;
 import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.matches.SimilarityGraphMatchStrategy;
 import de.uni_leipzig.dbs.pprl.primat.lu.similarity_calculation.record_similarity.RecordSimilarityCalculator;
 import de.uni_leipzig.dbs.pprl.primat.lu.similarity_vector.SimilarityVector;
+import de.uni_leipzig.dbs.pprl.primat.lu.utils.ProgressListener;
 
 /**
  * 
@@ -43,6 +44,8 @@ public class BatchSimilarityClassification implements SimilarityClassification {
 	private Classificator classifier;
 	private RedundancyCheckStrategy redundantMatchingStrategy;
 	private LinkageResultPartitionFactory<Record> linkResPartFactory;
+
+	private ProgressListener progress = ProgressListener.NOOP;
 
 	private Set<PartyPair> partyPairs;
 	private LinkageResult<Record> linkageResult;
@@ -68,11 +71,19 @@ public class BatchSimilarityClassification implements SimilarityClassification {
 	public LinkageResult<Record> classifyRecords(Set<Party> parties, Collection<Block> blocks) {
 		this.initializeVariables(parties);
 
+		long done = 0;
+		final long total = blocks.size();
+		progress.update(0, total);
 		for (final Block block : blocks) {
 			this.getMatchesForBlock(block);
+			progress.update(++done, total);
 		}
 
 		return this.linkageResult;
+	}
+
+	public void setProgressListener(ProgressListener progress) {
+		this.progress = progress;
 	}
 
 	private void getMatchesForBlock(Block block) {

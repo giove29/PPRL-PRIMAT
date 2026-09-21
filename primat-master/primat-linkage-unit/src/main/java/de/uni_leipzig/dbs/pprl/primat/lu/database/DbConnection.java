@@ -104,58 +104,75 @@ public class DbConnection {
 
 	public void addParties(Set<Party> parties) {
 		final EntityManager entityManager = openEntityManager();
+		try {
+			entityManager.getTransaction().begin();
 
-		entityManager.getTransaction().begin();
+			for (final Party party : parties) {
+				// TODO: easier way?
+				Party p1 = entityManager.find(Party.class, party.getName());
 
-		for (final Party party : parties) {
-			// TODO: easier way?
-			Party p1 = entityManager.find(Party.class, party.getName());
-
-			if (p1 == null) {
-				entityManager.persist(party);
+				if (p1 == null) {
+					entityManager.persist(party);
+				}
 			}
-		}
 
-		entityManager.getTransaction().commit();
+			entityManager.getTransaction().commit();
+		}
+		finally {
+			entityManager.close();
+		}
 	}
 
 	public void addBlockingKeysStaging(Collection<Record> data) {
 		final EntityManager entityManager = openEntityManager();
-		entityManager.getTransaction().begin();
-
-		final Query dropQuery = entityManager.createNativeQuery("DROP TABLE IF EXISTS BlockStaging;");
-		dropQuery.executeUpdate();
-
-		final Query query1 = entityManager.createNativeQuery(
-			  "CREATE TEMPORARY TABLE BlockStaging( "
-			+ "	blockingkeyid INTEGER NOT NULL, " 
-			+ "	blockingkeyvalue VARCHAR NOT NULL, "
-			+ "	recordId VARCHAR NOT NULL, " 
-			+ "	party_name VARCHAR NOT NULL, "
-			+ " duplicatefree BOOLEAN NOT NULL, " 
-			+ "	PRIMARY KEY (blockingkeyid, blockingkeyvalue, recordId) " 
-			+ ");");
-
-		query1.executeUpdate();
-
-		final Query query2 = entityManager.createNativeQuery(
-			"INSERT INTO BlockStaging (blockingkeyid, blockingkeyvalue, recordid, party_name, duplicatefree) "
-				+ "VALUES (?, ?, ?, ?, ?)");
-
-		for (final Record rec : data) {
-			final Set<BlockingKeyAttribute> bks = rec.getBlockingKeys();
-
-			for (final BlockingKeyAttribute bka : bks) {
-				query2.setParameter(1, bka.getBlockingKeyId().getBlockingKeyId());
-				query2.setParameter(2, bka.getBlockingKeyId().getBlockingKeyValue());
-				query2.setParameter(3, rec.getId());
-				query2.setParameter(4, rec.getParty().getName());
-				query2.setParameter(5, rec.getParty().isDuplicateFree());
-				query2.executeUpdate();
-			}
+		try {
+			entityManager.getTransaction().begin();
+			stageBlockingKeys(entityManager, data);
+			entityManager.getTransaction().commit();
 		}
+		finally {
+			entityManager.close();
+		}
+	}
 
-		entityManager.getTransaction().commit();
+	/**
+	 * Ricrea la tabella temporanea {@code BlockStaging} e la popola con le
+	 * blocking key di {@code data} tramite batch JDBC (una INSERT per riga
+	 * costerebbe un round-trip ciascuna: centinaia di migliaia per run).
+	 * Deve girare sulla stessa connessione/transazione della query che la usa.
+	 */
+	private static void stageBlockingKeys(EntityManager entityManager, Collection<Record> data) {
+		entityManager.unwrap(org.hibernate.Session.class).doWork(connection -> {
+			try (java.sql.Statement st = connection.createStatement()) {
+				st.execute("DROP TABLE IF EXISTS BlockStaging");
+				st.execute("CREATE TEMPORARY TABLE BlockStaging( "
+					+ "blockingkeyid INTEGER NOT NULL, blockingkeyvalue VARCHAR NOT NULL, "
+					+ "recordId VARCHAR NOT NULL, party_name VARCHAR NOT NULL, duplicatefree BOOLEAN NOT NULL, "
+					+ "PRIMARY KEY (blockingkeyid, blockingkeyvalue, recordId))");
+			}
+			try (java.sql.PreparedStatement ps = connection.prepareStatement(
+				"INSERT INTO BlockStaging (blockingkeyid, blockingkeyvalue, recordid, party_name, duplicatefree) "
+					+ "VALUES (?, ?, ?, ?, ?)")) {
+				int pending = 0;
+				for (final Record rec : data) {
+					for (final BlockingKeyAttribute bka : rec.getBlockingKeys()) {
+						ps.setInt(1, bka.getBlockingKeyId().getBlockingKeyId());
+						ps.setString(2, bka.getBlockingKeyId().getBlockingKeyValue());
+						ps.setString(3, rec.getId());
+						ps.setString(4, rec.getParty().getName());
+						ps.setBoolean(5, rec.getParty().isDuplicateFree());
+						ps.addBatch();
+						if (++pending >= 5000) {
+							ps.executeBatch();
+							pending = 0;
+						}
+					}
+				}
+				if (pending > 0) {
+					ps.executeBatch();
+				}
+			}
+		});
 	}
 
 	@SuppressWarnings("unchecked")
@@ -362,38 +379,50 @@ public class DbConnection {
 	 */
 	@SuppressWarnings("unchecked")
 	public Set<Cluster> getCandidateClusters(Collection<Record> newRecords) {
-		addBlockingKeysStaging(newRecords);
-
 		final EntityManager entityManager = openEntityManager();
-		entityManager.getTransaction().begin();
+		try {
+			entityManager.getTransaction().begin();
 
-		final Query query = entityManager.createNativeQuery(
-			"SELECT DISTINCT cb.clusterid FROM clusterblock cb "
-				+ "JOIN blockstaging bs ON cb.blockingkeyid = bs.blockingkeyid "
-				+ "AND cb.blockingkeyvalue = bs.blockingkeyvalue");
+			// DB senza cluster storici (es. primo run): nessun candidato possibile,
+			// inutile popolare lo staging.
+			if (entityManager.createNativeQuery("SELECT 1 FROM clusterblock LIMIT 1").getResultList().isEmpty()) {
+				entityManager.getTransaction().commit();
+				return Set.of();
+			}
 
-		final List<Object> res = query.getResultList();
-		final Set<Integer> ids = res.stream().map(o -> (Integer) o).collect(Collectors.toSet());
+			stageBlockingKeys(entityManager, newRecords);
 
-		if (ids.isEmpty()) {
+			final Query query = entityManager.createNativeQuery(
+				"SELECT DISTINCT cb.clusterid FROM clusterblock cb "
+					+ "JOIN blockstaging bs ON cb.blockingkeyid = bs.blockingkeyid "
+					+ "AND cb.blockingkeyvalue = bs.blockingkeyvalue");
+
+			final List<Object> res = query.getResultList();
+			final Set<Integer> ids = res.stream().map(o -> (Integer) o).collect(Collectors.toSet());
+
+			if (ids.isEmpty()) {
+				entityManager.getTransaction().commit();
+				return Set.of();
+			}
+
+			final TypedQuery<Cluster> q = entityManager.createQuery(
+				"SELECT DISTINCT c FROM Cluster c "
+					+ "LEFT JOIN FETCH c.records r "
+					+ "LEFT JOIN FETCH r.attributes "
+					+ "LEFT JOIN FETCH c.blockingKeys "
+					+ "WHERE c.id IN :ids",
+				Cluster.class);
+			q.setParameter("ids", ids);
+
+			final Set<Cluster> clusters = new HashSet<>(q.getResultList());
+
 			entityManager.getTransaction().commit();
-			return Set.of();
+
+			return clusters;
 		}
-
-		final TypedQuery<Cluster> q = entityManager.createQuery(
-			"SELECT DISTINCT c FROM Cluster c "
-				+ "LEFT JOIN FETCH c.records r "
-				+ "LEFT JOIN FETCH r.attributes "
-				+ "LEFT JOIN FETCH c.blockingKeys "
-				+ "WHERE c.id IN :ids",
-			Cluster.class);
-		q.setParameter("ids", ids);
-
-		final Set<Cluster> clusters = new HashSet<>(q.getResultList());
-
-		entityManager.getTransaction().commit();
-
-		return clusters;
+		finally {
+			entityManager.close();
+		}
 	}
 
 	/**

@@ -25,7 +25,25 @@ public class ConsoleProgressBar implements ProgressListener {
 	private boolean finished;
 
 	public ConsoleProgressBar(String label) {
-		this(label, System.out, System.console() != null);
+		this(label, System.out, isInteractiveTerminal());
+	}
+
+	/**
+	 * Da JDK 22 {@code System.console()} è non-null anche con output rediretto:
+	 * si controlla quindi anche {@code Console.isTerminal()} (via reflection,
+	 * il progetto compila per Java 11).
+	 */
+	static boolean isInteractiveTerminal() {
+		final java.io.Console console = System.console();
+		if (console == null) {
+			return false;
+		}
+		try {
+			return (Boolean) java.io.Console.class.getMethod("isTerminal").invoke(console);
+		}
+		catch (ReflectiveOperationException | RuntimeException e) {
+			return true;
+		}
 	}
 
 	public ConsoleProgressBar(String label, PrintStream out, boolean interactive) {
@@ -55,12 +73,14 @@ public class ConsoleProgressBar implements ProgressListener {
 			if (complete) {
 				out.println();
 			}
+			out.flush();
 		}
 		else {
 			final int decile = percent / 10;
 			if (decile > lastDecile) {
 				lastDecile = decile;
 				out.println(render(done, total, percent, now));
+				out.flush();
 			}
 		}
 		finished = complete;

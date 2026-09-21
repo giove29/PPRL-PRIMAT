@@ -133,6 +133,7 @@ public class LinkageUnitOrchestrator {
 		final MultiSourceLinkage linkage = new MultiSourceLinkage();
 		final boolean persistenceEnabled = config.isPersistenceEnabled();
 		final long[] persistenceStartNanos = new long[1];
+		linkage.setClassificationProgress(new ConsoleProgressBar("Classificazione"));
 		linkage.setClusteringProgress(new ConsoleProgressBar("Clustering"));
 		linkage.setPersistenceProgress(new ConsoleProgressBar("Scrittura DB"));
 		linkage.setOnClusteringFinished(() -> {
@@ -140,8 +141,16 @@ public class LinkageUnitOrchestrator {
 					+ linkage.getLastClusteringElapsedNanos() / 1_000_000 + " ms ===");
 			persistenceStartNanos[0] = System.nanoTime();
 		});
+		final long dbPhaseStart = System.nanoTime();
+		if (persistenceEnabled) {
+			System.out.println("=== Connessione al DB e caricamento cluster candidati in corso ===");
+		}
 		final DbConnection dbConnection = config.getDbConnection(); // null se persistenceEnabled == false
 		final Map<Party, Collection<Record>> effectiveInput = persistenceEnabled ? buildPersistentInput(input) : input;
+		if (persistenceEnabled) {
+			System.out.println("=== Connessione al DB e cluster candidati completati in "
+					+ (System.nanoTime() - dbPhaseStart) / 1_000_000 + " ms ===");
+		}
 		final LinkageOutcome outcome;
 		switch (method) {
 			case CENTER_CLUSTERING: {
@@ -202,8 +211,13 @@ public class LinkageUnitOrchestrator {
 	 * {@link PersistentLinkTableBuilder}.
 	 */
 	private Map<Party, Collection<Record>> buildPersistentInput(Map<Party, Collection<Record>> freshInput) {
+		long stepStart = System.nanoTime();
 		final DbConnection dbConnection = config.getDbConnection();
+		System.out.println("  DB connesso in " + (System.nanoTime() - stepStart) / 1_000_000 + " ms");
+		stepStart = System.nanoTime();
 		dbConnection.addParties(new HashSet<>(config.getParties()));
+		System.out.println("  Party registrate in " + (System.nanoTime() - stepStart) / 1_000_000 + " ms");
+		stepStart = System.nanoTime();
 
 		final List<Record> freshRecords = freshInput.values().stream()
 				.flatMap(Collection::stream).collect(Collectors.toList());
@@ -211,6 +225,8 @@ public class LinkageUnitOrchestrator {
 		// chiamata a blocker.getBlocks(input) qualche riga sopra in runOnce()
 
 		final Set<Cluster> candidateClusters = dbConnection.getCandidateClusters(freshRecords);
+		System.out.println("  Cluster candidati: " + candidateClusters.size() + " ("
+				+ (System.nanoTime() - stepStart) / 1_000_000 + " ms)");
 		final List<Record> history = candidateClusters.stream()
 				.flatMap(c -> c.getRecords().stream()).collect(Collectors.toList());
 		final Map<String, Record> historyById = history.stream()

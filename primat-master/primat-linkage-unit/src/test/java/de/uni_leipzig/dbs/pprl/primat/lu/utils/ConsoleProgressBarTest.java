@@ -26,6 +26,18 @@ public class ConsoleProgressBarTest {
 	}
 
 	@Test
+	void interactiveModeFlushesWithoutNewline() {
+		final ByteArrayOutputStream sink = new ByteArrayOutputStream();
+		final PrintStream buffered = new PrintStream(new java.io.BufferedOutputStream(sink, 8192), false);
+		final ConsoleProgressBar bar = new ConsoleProgressBar("Live", buffered, true);
+
+		bar.update(0, 10);
+
+		assertTrue(sink.toString().startsWith("\r"));
+		assertTrue(sink.toString().contains("Live"));
+	}
+
+	@Test
 	void zeroTotalCompletesImmediately() {
 		final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 		final ConsoleProgressBar bar = new ConsoleProgressBar("Empty", new PrintStream(buffer), true);
