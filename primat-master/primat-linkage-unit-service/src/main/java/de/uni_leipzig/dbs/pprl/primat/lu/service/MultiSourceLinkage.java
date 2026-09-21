@@ -373,30 +373,30 @@ public class MultiSourceLinkage {
 	private List<LinkedPair<Record>> classifyAndCluster(Map<Party, Collection<Record>> input, Blocker blocker,
 			MultipartiteClusteringStrategy clusterer, double threshold) {
 		long phaseStart = System.nanoTime();
-		System.out.println("=== Valutazione del blocking in corso ===");
 		final Collection<Block> blocks = blocker.getBlocks(input);
 		final long maxComparisons = PerformanceMetrics.getMaxComparisons(input, ComparisonStrategy.SOURCE_CONSISTENT);
 		final long expectedMatches = countGroundTruthMatches(input);
 		lastBlockingEvaluation = new BlockingEvaluator(new IdEqualityTrueMatchChecker())
 				.evaluate(blocks, maxComparisons, expectedMatches);
-		System.out.println("=== Valutazione del blocking completata in " + elapsedMillis(phaseStart) + " ms ===");
+		phaseLine("Blocking (valutazione)", elapsedMillis(phaseStart));
 
 		phaseStart = System.nanoTime();
-		System.out.println("=== Classificazione (calcolo similarità) in corso ===");
 		final LinkageResult<Record> linkageResult = classify(input, blocker, threshold);
-		System.out.println("=== Classificazione completata in " + elapsedMillis(phaseStart) + " ms ===");
+		phaseLine("Classificazione", elapsedMillis(phaseStart));
 
 		phaseStart = System.nanoTime();
-		System.out.println("=== Costruzione del grafo di similarità in corso ===");
 		final MultiPartiteSimilarityGraph graph = MultiPartiteSimilarityGraph.from(linkageResult);
-		System.out.println("=== Grafo di similarità costruito in " + elapsedMillis(phaseStart) + " ms ===");
-		System.out.println("=== Clustering in corso (include il calcolo delle componenti connesse) ===");
+		phaseLine("Grafo di similarità", elapsedMillis(phaseStart));
 		final long clusteringStartNanos = System.nanoTime();
 		clusterer.setProgressListener(clusteringProgress);
 		final List<LinkedPair<Record>> matches = clusterer.cluster(graph);
 		lastClusteringElapsedNanos = System.nanoTime() - clusteringStartNanos;
 		onClusteringFinished.run();
 		return matches;
+	}
+
+	static void phaseLine(String name, long millis) {
+		System.out.printf("  %-24s %8d ms%n", name, millis);
 	}
 
 	private static long elapsedMillis(long startNanos) {

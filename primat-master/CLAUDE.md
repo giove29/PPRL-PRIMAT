@@ -101,3 +101,4 @@ Dopo ogni modifica interessante (feature, fix, refactor, cambio di comportamento
 - 2026-09-21 feat(lu): ProgressListener + ConsoleProgressBar (tqdm-style) per classificazione, clustering, scrittura DB/CSV
 - 2026-09-21 feat(lu-service): banner di tempo per ogni fase; "clustering completato" stampato prima della persistenza
 - 2026-09-21 perf(lu-db): BlockStaging via batch JDBC nella stessa tx dei candidati, skip se DB vuoto, EM chiusi (fix hang "Connessione al DB")
+- 2026-09-21 refactor(lu-service): output LU compatto (header run, righe fase allineate, sezione risultati, niente stampa cluster); log4j.properties WARN

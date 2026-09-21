@@ -117,18 +117,24 @@ public class LinkageUnitOrchestrator {
 		final List<Party> parties = config.getParties();
 		final Map<Party, Collection<Record>> input = collectRbf(runId);
 
-		System.out.println("=== Run " + runId + " - record ricevuti per party ===");
+		final StringBuilder counts = new StringBuilder();
 		for (final Party party : parties) {
-			System.out.println("  " + party.getName() + ": " + input.get(party).size());
+			counts.append(counts.length() > 0 ? ", " : "").append(party.getName()).append('=')
+					.append(input.get(party).size());
 		}
 
 		final LshKeyGenerator keyGenerator = new JaccardLshKeyGenerator(config.getLshKeySize(), config.getLshKeys(),
 				config.getLshValueRange(), config.getLshSeed());
 		final Blocker blocker = new LshBlocker(keyGenerator);
-		System.out.println("=== Blocking (JaccardLSH) - blocchi: " + blocker.getBlocks(input).size() + " ===");
-
 		final ClusteringMethod method = config.getClusteringMethod();
-		System.out.println("=== Strategia scelta: " + method + " ===");
+		System.out.println();
+		System.out.println("=== PRIMAT Linkage Unit | strategia: " + method + " | persistenza: "
+				+ (config.isPersistenceEnabled() ? "DB" : "CSV") + " ===");
+		System.out.println("  run:     " + runId);
+		System.out.println("  record:  " + counts);
+		System.out.println("  blocchi: " + blocker.getBlocks(input).size() + " (JaccardLSH)");
+		System.out.println();
+		System.out.println("--- Fasi ---");
 
 		final MultiSourceLinkage linkage = new MultiSourceLinkage();
 		final boolean persistenceEnabled = config.isPersistenceEnabled();
@@ -137,20 +143,11 @@ public class LinkageUnitOrchestrator {
 		linkage.setClusteringProgress(new ConsoleProgressBar("Clustering"));
 		linkage.setPersistenceProgress(new ConsoleProgressBar("Scrittura DB"));
 		linkage.setOnClusteringFinished(() -> {
-			System.out.println("=== Fase di clustering completata in "
-					+ linkage.getLastClusteringElapsedNanos() / 1_000_000 + " ms ===");
+			MultiSourceLinkage.phaseLine("Clustering", linkage.getLastClusteringElapsedNanos() / 1_000_000);
 			persistenceStartNanos[0] = System.nanoTime();
 		});
-		final long dbPhaseStart = System.nanoTime();
-		if (persistenceEnabled) {
-			System.out.println("=== Connessione al DB e caricamento cluster candidati in corso ===");
-		}
 		final DbConnection dbConnection = config.getDbConnection(); // null se persistenceEnabled == false
 		final Map<Party, Collection<Record>> effectiveInput = persistenceEnabled ? buildPersistentInput(input) : input;
-		if (persistenceEnabled) {
-			System.out.println("=== Connessione al DB e cluster candidati completati in "
-					+ (System.nanoTime() - dbPhaseStart) / 1_000_000 + " ms ===");
-		}
 		final LinkageOutcome outcome;
 		switch (method) {
 			case CENTER_CLUSTERING: {
@@ -192,10 +189,9 @@ public class LinkageUnitOrchestrator {
 			ClusterCsvWriter.write(outcome, config.getCsvOutputPath(), new ConsoleProgressBar("Scrittura CSV"));
 		}
 		final long persistenceElapsedMillis = (System.nanoTime() - persistenceStartNanos[0]) / 1_000_000;
-		System.out.println("=== Fase di persistenza/salvataggio completata in " + persistenceElapsedMillis + " ms ===");
+		MultiSourceLinkage.phaseLine(persistenceEnabled ? "Persistenza DB" : "Scrittura CSV", persistenceElapsedMillis);
 
-		printOutcome(method.name(), outcome, linkage.getLastBlockingEvaluation());
-		printLinkTable(outcome.getLinkTable());
+		printOutcome(outcome, linkage.getLastBlockingEvaluation());
 		return outcome;
 	}
 
@@ -211,12 +207,12 @@ public class LinkageUnitOrchestrator {
 	 * {@link PersistentLinkTableBuilder}.
 	 */
 	private Map<Party, Collection<Record>> buildPersistentInput(Map<Party, Collection<Record>> freshInput) {
-		long stepStart = System.nanoTime();
+		final long phaseStart = System.nanoTime();
 		final DbConnection dbConnection = config.getDbConnection();
-		System.out.println("  DB connesso in " + (System.nanoTime() - stepStart) / 1_000_000 + " ms");
-		stepStart = System.nanoTime();
+		final long connectMs = (System.nanoTime() - phaseStart) / 1_000_000;
+		long stepStart = System.nanoTime();
 		dbConnection.addParties(new HashSet<>(config.getParties()));
-		System.out.println("  Party registrate in " + (System.nanoTime() - stepStart) / 1_000_000 + " ms");
+		final long partiesMs = (System.nanoTime() - stepStart) / 1_000_000;
 		stepStart = System.nanoTime();
 
 		final List<Record> freshRecords = freshInput.values().stream()
@@ -225,8 +221,10 @@ public class LinkageUnitOrchestrator {
 		// chiamata a blocker.getBlocks(input) qualche riga sopra in runOnce()
 
 		final Set<Cluster> candidateClusters = dbConnection.getCandidateClusters(freshRecords);
-		System.out.println("  Cluster candidati: " + candidateClusters.size() + " ("
-				+ (System.nanoTime() - stepStart) / 1_000_000 + " ms)");
+		final long candidatesMs = (System.nanoTime() - stepStart) / 1_000_000;
+		MultiSourceLinkage.phaseLine("DB + cluster candidati", (System.nanoTime() - phaseStart) / 1_000_000);
+		System.out.println("      connessione " + connectMs + " ms, party " + partiesMs + " ms, candidati "
+				+ candidateClusters.size() + " in " + candidatesMs + " ms");
 		final List<Record> history = candidateClusters.stream()
 				.flatMap(c -> c.getRecords().stream()).collect(Collectors.toList());
 		final Map<String, Record> historyById = history.stream()
@@ -292,26 +290,17 @@ public class LinkageUnitOrchestrator {
 		return input;
 	}
 
-	private static void printOutcome(String label, LinkageOutcome outcome, BlockingEvaluationResult blockingEval) {
-		System.out.printf("  %s - TP: %d, FP: %d, ground-truth totali: %d, recall: %.3f, precision: %.3f, F-measure: %.3f%n",
-				label, outcome.getTruePositives(), outcome.getFalsePositives(), outcome.getTotalTrueMatches(),
-				outcome.getRecall(), outcome.getPrecision(), outcome.getFMeasure());
-		System.out.printf("  %s - coppie generate: %d, RR: %.0f%%, PC: %.0f%%, PQ: %.0f%%%n",
-				label, blockingEval.getCandidatePairs(), blockingEval.getReductionRatio() * 100,
+	private static void printOutcome(LinkageOutcome outcome, BlockingEvaluationResult blockingEval) {
+		System.out.println();
+		System.out.println("--- Risultati ---");
+		System.out.printf("  Cluster:   %d%n", outcome.getLinkTable().size());
+		System.out.printf("  Blocking:  coppie candidate %d | RR %.0f%% | PC %.0f%% | PQ %.0f%%%n",
+				blockingEval.getCandidatePairs(), blockingEval.getReductionRatio() * 100,
 				blockingEval.getPairsCompleteness() * 100, blockingEval.getPairsQuality() * 100);
-	}
-
-	private static void printLinkTable(java.util.Set<Cluster> linkTable) {
-		for (final Cluster cluster : linkTable) {
-			final StringBuilder members = new StringBuilder();
-			for (final Record record : cluster.getRecords()) {
-				if (members.length() > 0) {
-					members.append(", ");
-				}
-				members.append(record.getParty().getName()).append(':').append(record.getId());
-			}
-			System.out.println("    cluster " + cluster.getId() + ": [" + members + "]");
-		}
+		System.out.printf("  Linkage:   TP %d | FP %d | GT %d | recall %.3f | precision %.3f | F1 %.3f%n",
+				outcome.getTruePositives(), outcome.getFalsePositives(), outcome.getTotalTrueMatches(),
+				outcome.getRecall(), outcome.getPrecision(), outcome.getFMeasure());
+		System.out.println("=====");
 	}
 
 	/**
