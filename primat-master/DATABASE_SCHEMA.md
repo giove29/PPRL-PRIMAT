@@ -47,7 +47,7 @@ Entity: `Record`. Una riga = un'impronta (RBF) ricevuta da un Data Owner in un q
 
 ## `cluster`
 
-Entity: `Cluster`. Una riga = un'**entità reale riconosciuta nel tempo** (una persona, secondo la Linkage Unit). Questo è l'oggetto che rimane stabile tra run: lo stesso `id` deve ripresentarsi ai run successivi finché quell'entità non viene fusa con un'altra.
+Entity: `Cluster`. Id da sequence dedicata `cluster_seq` (allocationSize=50, dal 2026-09-21; prima `hibernate_sequence` condivisa → conflitto `Found [1] and [50]`). DB creati prima di questa modifica vanno resettati (`db_reset_scripts/reset_db.py --yes`). Una riga = un'**entità reale riconosciuta nel tempo** (una persona, secondo la Linkage Unit). Questo è l'oggetto che rimane stabile tra run: lo stesso `id` deve ripresentarsi ai run successivi finché quell'entità non viene fusa con un'altra.
 
 | Colonna | Tipo | Significato |
 |---|---|---|

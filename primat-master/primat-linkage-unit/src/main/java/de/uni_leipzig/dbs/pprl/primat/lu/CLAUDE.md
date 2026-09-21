@@ -2,6 +2,7 @@
 - `/blocking`: Metodi di blocco avanzati per ridurre lo spazio di ricerca (es. Standard, LSH, Sorted Neighborhood).
 - `/classification`: Algoritmi di classificazione (supervisionata/non) per identificare i match.
 - `/database`: Interfacce e repository per la persistenza su database relazionali o NoSQL. `DbConnection` (dal 2026-09-16 una classe normale, non più un enum singleton — costruttore `DbConnection(persistenceUnitName, jdbcUrl, jdbcUser, jdbcPassword)`, una istanza per ciascuna delle 4 persistence-unit dedicate in `primat-linkage-unit/src/main/resources/META-INF/persistence.xml` (dal 2026-09-21, erano 5 dal 2026-09-17, 3 dal 2026-09-16), vedi root `CLAUDE.md`).
+  - Performance (2026-09-21): batching JDBC (`batch_size`, `order_inserts/updates`, `reWriteBatchedInserts`); `persistNewClusters(...)` scrive tutti i nuovi cluster in un'unica EM/transazione con flush ogni 500; `BlockStaging` popolata via `doWork` batch da 5000 righe nella stessa transazione della query candidati, saltata se `clusterblock` è vuota; EntityManager sempre chiusi in `finally`.
 - `/distance_function`: Funzioni per calcolare distanze stringa/numeriche (es. Levenshtein, Jaro-Winkler).
 - `/evaluation`: Sistemi e metriche per valutare l'accuratezza rispetto a un ground-truth (Precision, Recall, F-Measure).
 - `/linkage_result`: Classi che rappresentano e aggregano l'output finale dei match.
@@ -13,4 +14,4 @@
 - `/similarity_classification`: Modelli per l'integrazione di regole basate su soglie di similarità.
 - `/similarity_function`: Metriche specializzate per calcolare score di similarità.
 - `/similarity_vector`: Strutture vettoriali utili al machine learning per i punteggi aggregati.
-- `/utils`: Utilità di supporto specifiche all'elaborazione del record linkage.
+- `/utils`: Utilità di supporto specifiche all'elaborazione del record linkage. Include `ProgressListener` (callback `update(done,total)`, `NOOP`, `tracking(...)` pesato per archi sulle componenti connesse) e `ConsoleProgressBar` (barra tqdm-style; `\r` solo se terminale interattivo, altrimenti una riga per decile). Le 5 `MultipartiteClusteringStrategy` accettano `setProgressListener`; `BatchSimilarityClassification` riporta progresso per blocco.
