@@ -25,6 +25,7 @@ public class BloomFilterExtractorDefinition extends ExtractorDefinition {
 
 	private int hashes;
 	private String salt;
+	private int missingValueTokenCount;
 
 	public BloomFilterExtractorDefinition() {
 		this("");
@@ -34,6 +35,7 @@ public class BloomFilterExtractorDefinition extends ExtractorDefinition {
 		super(name);
 		this.hashes = -1;
 		this.salt = "";
+		this.missingValueTokenCount = 0;
 	}
 
 	public void setNumberOfHashFunctions(int hashes) {
@@ -50,6 +52,15 @@ public class BloomFilterExtractorDefinition extends ExtractorDefinition {
 
 	public void setSalt(String salt) {
 		this.salt = salt;
+	}
+
+	/** @return numero di token sintetici da generare via {@code MissingValueBucketing} se questo attributo risulta vuoto. */
+	public int getMissingValueTokenCount() {
+		return this.missingValueTokenCount;
+	}
+
+	public void setMissingValueTokenCount(int missingValueTokenCount) {
+		this.missingValueTokenCount = missingValueTokenCount;
 	}
 
 }

@@ -21,6 +21,7 @@ import java.util.Set;
 import de.uni_leipzig.dbs.pprl.primat.common.extraction.FeatureExtraction;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.QidAttribute;
+import de.uni_leipzig.dbs.pprl.primat.common.utils.QidAttributeUtils;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.Encoder;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hardening.BloomFilterHardener;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hashing.HashingMethod;
@@ -127,8 +128,7 @@ public final class BloomFilterEncoder implements Encoder {
 		}
 
 		for (final BloomFilterExtractorDefinition exDef : exDefs) {
-			final FeatureExtraction featEx = new FeatureExtraction(exDef);
-			final Set<String> features = new HashSet<String>(featEx.getFeatures(record));
+			final Set<String> features = new HashSet<String>(extractFeatures(bfDef, exDef, record));
 			final int hashFunctions = exDef.getNumberOfHashFunctions();
 
 			if (printThis) {
@@ -145,6 +145,29 @@ public final class BloomFilterEncoder implements Encoder {
 		}
 
 		return positions;
+	}
+
+	/**
+	 * Estrae le feature per un attributo: se il missing-value handling e'
+	 * abilitato su questo {@link BloomFilterDefinition} e l'attributo di
+	 * {@code exDef} risulta vuoto (dopo normalizzazione), bypassa del tutto
+	 * l'estrazione a q-gram e genera i token sintetici di
+	 * {@link MissingValueBucketing} al suo posto. Il bypass si applica solo
+	 * per un {@code exDef} con esattamente una colonna (sempre il caso per le
+	 * colonne prodotte da {@code DataOwnerPipeline.buildRbfDefinition()}); un
+	 * futuro extractor multi-colonna disabilita silenziosamente la tecnica per
+	 * quell'attributo, senza eccezioni.
+	 */
+	private List<String> extractFeatures(BloomFilterDefinition bfDef, BloomFilterExtractorDefinition exDef,
+			Record record) {
+		if (bfDef.isMissingValueHandlingEnabled() && exDef.getColumns().size() == 1) {
+			final QidAttribute<?> attr = record.getQidAttribute(exDef.getColumns().get(0));
+			if (QidAttributeUtils.isEmpty(attr)) {
+				return MissingValueBucketing.generateTokens(record, bfDef.getMissingValueAnchorPriority(),
+						exDef.getMissingValueTokenCount());
+			}
+		}
+		return new FeatureExtraction(exDef).getFeatures(record);
 	}
 
 	public List<String> getSchema() {

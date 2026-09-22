@@ -17,12 +17,23 @@ public class ColumnConfig {
 	/** Numero di hash function usato per una colonna QID se non specificato nel JSON. */
 	public static final int DEFAULT_HASH_FUNCTIONS = 10;
 
+	/**
+	 * Numero di token sintetici generati per un attributo vuoto quando
+	 * {@code missingValueTokenCount} e' omesso e la Constant Weight Encoding
+	 * non e' abilitata per questa colonna (altrimenti si riusa
+	 * {@code constantWeightEncoding.minTrigrams}, per un "peso" comparabile a
+	 * un valore normale).
+	 */
+	public static final int DEFAULT_MISSING_VALUE_TOKEN_COUNT = 7;
+
 	private int index;
 	private String name;
 	private ColumnRole role;
 	private ColumnDataType dataType;
 	private Integer hashFunctions;
 	private String salt;
+	private ConstantWeightEncodingJsonConfig constantWeightEncoding;
+	private Integer missingValueTokenCount;
 
 	public int getIndex() {
 		return index;
@@ -64,5 +75,36 @@ public class ColumnConfig {
 	 */
 	public String getSaltOrDefault() {
 		return salt != null ? salt : name + "_";
+	}
+
+	/** @return la sezione {@code constantWeightEncoding} di questa colonna, o {@code null} se assente. */
+	public ConstantWeightEncodingJsonConfig getConstantWeightEncoding() {
+		return constantWeightEncoding;
+	}
+
+	/** @return {@code true} se la Constant Weight Encoding e' esplicitamente abilitata per questa colonna. */
+	public boolean isConstantWeightEncodingEnabled() {
+		return constantWeightEncoding != null && Boolean.TRUE.equals(constantWeightEncoding.getEnabled());
+	}
+
+	/** @return il numero di token sintetici esplicitamente configurato per un attributo vuoto, o {@code null} se omesso. */
+	public Integer getMissingValueTokenCount() {
+		return missingValueTokenCount;
+	}
+
+	/**
+	 * @return {@link #getMissingValueTokenCount()} se presente; altrimenti
+	 *         {@code constantWeightEncoding.minTrigrams} se la CWE e' abilitata
+	 *         per questa colonna (stesso "peso" di un valore normale);
+	 *         altrimenti {@link #DEFAULT_MISSING_VALUE_TOKEN_COUNT}.
+	 */
+	public int getMissingValueTokenCountOrDefault() {
+		if (missingValueTokenCount != null) {
+			return missingValueTokenCount;
+		}
+		if (isConstantWeightEncodingEnabled()) {
+			return constantWeightEncoding.getMinTrigrams();
+		}
+		return DEFAULT_MISSING_VALUE_TOKEN_COUNT;
 	}
 }

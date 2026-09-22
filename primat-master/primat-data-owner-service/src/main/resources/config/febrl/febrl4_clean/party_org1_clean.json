@@ -14,15 +14,25 @@
     "length": 1024,
     "hardeningChain": []
   },
+  "missingValueHandling": {
+    "enabled": true,
+    "anchorPriority": ["surname", "given_name", "date_of_birth", "suburb", "state", "postcode"]
+  },
   "columns": [
     { "index": 0, "name": "PARTY", "role": "PARTY" },
     { "index": 1, "name": "ID", "role": "ID" },
     { "index": 2, "name": "GLOBAL_ID", "role": "GLOBAL_ID" },
-    { "index": 3, "name": "given_name", "role": "QID", "dataType": "TEXT", "hashFunctions": 25, "salt": "SALT_" },
-    { "index": 4, "name": "surname", "role": "QID", "dataType": "TEXT", "hashFunctions": 25, "salt": "SALT_" },
-    { "index": 8, "name": "suburb", "role": "QID", "dataType": "TEXT", "hashFunctions": 6, "salt": "SALT_" },
-    { "index": 9, "name": "postcode", "role": "QID", "dataType": "NUMERIC", "hashFunctions": 6, "salt": "SALT_" },
-    { "index": 10, "name": "state", "role": "QID", "dataType": "TEXT", "hashFunctions": 3, "salt": "SALT_" },
-    { "index": 11, "name": "date_of_birth", "role": "QID", "dataType": "NUMERIC", "hashFunctions": 25, "salt": "SALT_" }
+    { "index": 3, "name": "given_name", "role": "QID", "dataType": "TEXT", "hashFunctions": 25, "salt": "GIVEN_NAME_",
+      "constantWeightEncoding": { "enabled": true, "minTrigrams": 4, "maxTrigrams": 12 } },
+    { "index": 4, "name": "surname", "role": "QID", "dataType": "TEXT", "hashFunctions": 25, "salt": "SURNAME_",
+      "constantWeightEncoding": { "enabled": true, "minTrigrams": 4, "maxTrigrams": 12 } },
+    { "index": 8, "name": "suburb", "role": "QID", "dataType": "TEXT", "hashFunctions": 6, "salt": "SUBURB_",
+      "constantWeightEncoding": { "enabled": true, "minTrigrams": 3, "maxTrigrams": 10 } },
+    { "index": 9, "name": "postcode", "role": "QID", "dataType": "NUMERIC", "hashFunctions": 6, "salt": "POSTCODE_",
+      "constantWeightEncoding": { "enabled": true, "minTrigrams": 5, "maxTrigrams": 7 } },
+    { "index": 10, "name": "state", "role": "QID", "dataType": "TEXT", "hashFunctions": 3, "salt": "STATE_",
+      "constantWeightEncoding": { "enabled": true, "minTrigrams": 2, "maxTrigrams": 6 } },
+    { "index": 11, "name": "date_of_birth", "role": "QID", "dataType": "NUMERIC", "hashFunctions": 25, "salt": "DATE_OF_BIRTH_",
+      "constantWeightEncoding": { "enabled": true, "minTrigrams": 9, "maxTrigrams": 11 } }
   ]
 }

@@ -34,6 +34,8 @@ public class DataOwnerConfig {
 	private final int bloomFilterLength;
 	private final BloomFilterHardener hardener;
 	private final boolean debug;
+	private final boolean missingValueHandlingEnabled;
+	private final List<String> missingValueAnchorPriority;
 
 	/**
 	 * Costruito esclusivamente da {@link DataOwnerConfigLoader} dopo la
@@ -54,10 +56,15 @@ public class DataOwnerConfig {
 	 * @param bloomFilterLength lunghezza in bit dell'RBF
 	 * @param hardener          tecnica di hardening da applicare all'RBF dopo la codifica
 	 * @param debug             se {@code true}, la pipeline stampa a schermo i primi 2 record ad ogni passo di preprocessing
+	 * @param missingValueHandlingEnabled se {@code true}, un attributo QID vuoto viene codificato tramite
+	 *                                     {@code MissingValueBucketing} invece dei trigrammi di padding standard
+	 * @param missingValueAnchorPriority  nomi di colonna QID in ordine di priorita' per la scelta dell'anchor,
+	 *                                     vuota se {@code missingValueHandlingEnabled} e' {@code false}
 	 */
 	public DataOwnerConfig(String party, DataSourceType dataSourceType, String csvFilePath, boolean csvHasHeader,
 			char csvDelimiter, DbSourceConfig dbConfig, String mqttBrokerUrl, List<ColumnConfig> columns, int bloomFilterLength,
-			BloomFilterHardener hardener, boolean debug) {
+			BloomFilterHardener hardener, boolean debug, boolean missingValueHandlingEnabled,
+			List<String> missingValueAnchorPriority) {
 		this.party = party;
 		this.dataSourceType = dataSourceType;
 		this.csvFilePath = csvFilePath;
@@ -70,6 +77,8 @@ public class DataOwnerConfig {
 		this.bloomFilterLength = bloomFilterLength;
 		this.hardener = hardener;
 		this.debug = debug;
+		this.missingValueHandlingEnabled = missingValueHandlingEnabled;
+		this.missingValueAnchorPriority = missingValueAnchorPriority;
 	}
 
 	public String getParty() {
@@ -124,5 +133,15 @@ public class DataOwnerConfig {
 	/** @return {@code true} se la pipeline deve stampare a schermo i primi 2 record ad ogni passo di preprocessing. */
 	public boolean isDebug() {
 		return debug;
+	}
+
+	/** @return {@code true} se un attributo QID vuoto va codificato tramite {@code MissingValueBucketing}. */
+	public boolean isMissingValueHandlingEnabled() {
+		return missingValueHandlingEnabled;
+	}
+
+	/** @return nomi di colonna QID in ordine di priorita' per la scelta dell'anchor (lista vuota se la tecnica e' disabilitata). */
+	public List<String> getMissingValueAnchorPriority() {
+		return missingValueAnchorPriority;
 	}
 }

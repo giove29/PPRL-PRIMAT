@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import de.uni_leipzig.dbs.pprl.primat.common.extraction.FeatureExtractor;
-import de.uni_leipzig.dbs.pprl.primat.common.extraction.qgram.TrigramExtractor;
+import de.uni_leipzig.dbs.pprl.primat.common.extraction.qgram.ConstantWeightTrigramExtractor;
 import de.uni_leipzig.dbs.pprl.primat.common.model.NamedRecordSchemaConfiguration;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.common.model.RecordSchemaConfiguration;
@@ -38,6 +38,7 @@ import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.normalizing.TrimNo
 import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.normalizing.UpperCaseNormalizer;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.ColumnConfig;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.ColumnRole;
+import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.ConstantWeightEncodingJsonConfig;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.io.RecordSource;
 
 /**
@@ -145,23 +146,35 @@ public class DataOwnerPipeline {
 	 * Unica {@link BloomFilterDefinition} "RBF" che unisce gli estrattori di
 	 * tutte le colonne QID configurate in un solo bitset per record; numero di
 	 * hash function, salt (per colonna, con default se omessi nel JSON),
-	 * lunghezza e hardening sono presi da {@link DataOwnerConfig}.
+	 * lunghezza e hardening sono presi da {@link DataOwnerConfig}. Ogni colonna
+	 * ha il proprio {@link ConstantWeightTrigramExtractor} (con
+	 * {@code enabled=false} e' equivalente byte-per-byte al vecchio
+	 * {@code TrigramExtractor} condiviso), cosi' da poter applicare soglie CWE
+	 * diverse per attributo; il missing-value handling (bypass dei valori
+	 * vuoti verso {@code MissingValueBucketing}) e' propagato a livello di
+	 * RBF/estrattore, non nell'estrattore stesso.
 	 *
 	 * @return la definizione di codifica RBF
 	 */
 	private BloomFilterDefinition buildRbfDefinition() {
-		final FeatureExtractor featureExtractor = new TrigramExtractor(true, "_");
-
 		final List<BloomFilterExtractorDefinition> extractorDefinitions = new ArrayList<>();
 		for (final ColumnConfig column : config.getColumns()) {
 			if (column.getRole() != ColumnRole.QID) {
 				continue;
 			}
+			final boolean cweEnabled = column.isConstantWeightEncodingEnabled();
+			final ConstantWeightEncodingJsonConfig cwe = column.getConstantWeightEncoding();
+			final int minTrigrams = cweEnabled ? cwe.getMinTrigrams() : 0;
+			final int maxTrigrams = cweEnabled ? cwe.getMaxTrigrams() : Integer.MAX_VALUE;
+			final FeatureExtractor featureExtractor = new ConstantWeightTrigramExtractor(true, "_",
+					column.getSaltOrDefault(), cweEnabled, minTrigrams, maxTrigrams);
+
 			final BloomFilterExtractorDefinition extractorDefinition = new BloomFilterExtractorDefinition();
 			extractorDefinition.setColumnsByName(column.getName());
 			extractorDefinition.setExtractors(featureExtractor);
 			extractorDefinition.setNumberOfHashFunctions(column.getHashFunctionsOrDefault());
 			extractorDefinition.setSalt(column.getSaltOrDefault());
+			extractorDefinition.setMissingValueTokenCount(column.getMissingValueTokenCountOrDefault());
 			extractorDefinitions.add(extractorDefinition);
 		}
 
@@ -173,6 +186,8 @@ public class DataOwnerPipeline {
 		rbfDefinition.setHashingMethod(hashing);
 		rbfDefinition.setFeatureExtractors(extractorDefinitions);
 		rbfDefinition.setHardener(config.getHardener());
+		rbfDefinition.setMissingValueHandlingEnabled(config.isMissingValueHandlingEnabled());
+		rbfDefinition.setMissingValueAnchorPriority(config.getMissingValueAnchorPriority());
 		return rbfDefinition;
 	}
 

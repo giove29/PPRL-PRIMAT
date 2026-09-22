@@ -20,6 +20,7 @@ public class DataOwnerJsonConfig {
 	private BloomFilterJsonConfig bloomFilter;
 	private List<ColumnConfig> columns;
 	private Boolean debug;
+	private MissingValueHandlingJsonConfig missingValueHandling;
 
 	public String getParty() {
 		return party;
@@ -44,5 +45,10 @@ public class DataOwnerJsonConfig {
 	/** @return {@code true} se il JSON richiede le stampe di debug della pipeline, {@code false} (default) altrimenti. */
 	public boolean isDebug() {
 		return Boolean.TRUE.equals(debug);
+	}
+
+	/** @return la sezione top-level {@code missingValueHandling}, o {@code null} se assente. */
+	public MissingValueHandlingJsonConfig getMissingValueHandling() {
+		return missingValueHandling;
 	}
 }

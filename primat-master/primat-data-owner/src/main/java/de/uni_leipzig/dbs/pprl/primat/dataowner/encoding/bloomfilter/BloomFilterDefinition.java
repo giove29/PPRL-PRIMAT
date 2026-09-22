@@ -17,6 +17,7 @@ import java.util.List;
 
 import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hardening.BloomFilterHardener;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hashing.HashingMethod;
+import java.util.Collections;
 
 
 /**
@@ -33,6 +34,8 @@ public class BloomFilterDefinition {
 	private HashingMethod hashingMethod;
 	private BloomFilterHardener hardener;
 	private Integer recordSaltColumn;
+	private boolean missingValueHandlingEnabled;
+	private List<String> missingValueAnchorPriority = Collections.emptyList();
 
 	public BloomFilterDefinition() {
 	}
@@ -87,5 +90,21 @@ public class BloomFilterDefinition {
 
 	public void setRecordSaltColumn(Integer recordSaltColumn) {
 		this.recordSaltColumn = recordSaltColumn;
+	}
+
+	public boolean isMissingValueHandlingEnabled() {
+		return this.missingValueHandlingEnabled;
+	}
+
+	public void setMissingValueHandlingEnabled(boolean missingValueHandlingEnabled) {
+		this.missingValueHandlingEnabled = missingValueHandlingEnabled;
+	}
+
+	public List<String> getMissingValueAnchorPriority() {
+		return this.missingValueAnchorPriority;
+	}
+
+	public void setMissingValueAnchorPriority(List<String> missingValueAnchorPriority) {
+		this.missingValueAnchorPriority = missingValueAnchorPriority;
 	}
 }

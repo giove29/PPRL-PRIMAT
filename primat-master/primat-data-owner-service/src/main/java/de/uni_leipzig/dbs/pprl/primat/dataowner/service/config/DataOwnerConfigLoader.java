@@ -58,6 +58,7 @@ public final class DataOwnerConfigLoader {
 		validateTopLevel(raw, jsonPath);
 		validateDataSource(raw.getDataSource(), jsonPath);
 		validateColumns(raw.getColumns(), jsonPath);
+		validateMissingValueHandling(raw.getMissingValueHandling(), raw.getColumns(), jsonPath);
 
 		final int bfLength = resolveBloomFilterLength(raw.getBloomFilter(), jsonPath);
 		final BloomFilterHardener hardener = resolveHardener(raw.getBloomFilter(), bfLength, jsonPath);
@@ -77,8 +78,14 @@ public final class DataOwnerConfigLoader {
 		}
 		final DbSourceConfig dbConfig = dataSource.getType() == DataSourceType.DB ? dataSource.getDb() : null;
 
+		final MissingValueHandlingJsonConfig mvh = raw.getMissingValueHandling();
+		final boolean missingValueHandlingEnabled = mvh != null && Boolean.TRUE.equals(mvh.getEnabled());
+		final List<String> missingValueAnchorPriority = missingValueHandlingEnabled ? mvh.getAnchorPriority()
+				: List.of();
+
 		return new DataOwnerConfig(raw.getParty(), dataSource.getType(), csvFilePath, csvHasHeader, csvDelimiter, dbConfig,
-				raw.getMqttBrokerUrl(), raw.getColumns(), bfLength, hardener, raw.isDebug());
+				raw.getMqttBrokerUrl(), raw.getColumns(), bfLength, hardener, raw.isDebug(), missingValueHandlingEnabled,
+				missingValueAnchorPriority);
 	}
 
 	private static String readFile(Path jsonPath) throws DataOwnerConfigException {
@@ -224,6 +231,51 @@ public final class DataOwnerConfigLoader {
 			throw new DataOwnerConfigException("Colonna QID '" + column.getName()
 					+ "': 'hashFunctions' deve essere positivo, trovato " + column.getHashFunctions() + " in "
 					+ jsonPath);
+		}
+		if (column.getMissingValueTokenCount() != null && column.getMissingValueTokenCount() <= 0) {
+			throw new DataOwnerConfigException("Colonna QID '" + column.getName()
+					+ "': 'missingValueTokenCount' deve essere positivo, trovato " + column.getMissingValueTokenCount()
+					+ " in " + jsonPath);
+		}
+		if (column.isConstantWeightEncodingEnabled()) {
+			final ConstantWeightEncodingJsonConfig cwe = column.getConstantWeightEncoding();
+			final Integer min = cwe.getMinTrigrams();
+			final Integer max = cwe.getMaxTrigrams();
+			if (min == null || max == null || min <= 0 || max <= 0) {
+				throw new DataOwnerConfigException("Colonna QID '" + column.getName()
+						+ "': 'constantWeightEncoding.minTrigrams'/'maxTrigrams' devono essere presenti e positivi in "
+						+ jsonPath);
+			}
+			if (min > max) {
+				throw new DataOwnerConfigException("Colonna QID '" + column.getName()
+						+ "': 'constantWeightEncoding.minTrigrams' (" + min + ") non puo' superare 'maxTrigrams' (" + max
+						+ ") in " + jsonPath);
+			}
+		}
+	}
+
+	private static void validateMissingValueHandling(MissingValueHandlingJsonConfig missingValueHandling,
+			List<ColumnConfig> columns, Path jsonPath) throws DataOwnerConfigException {
+		if (missingValueHandling == null || !Boolean.TRUE.equals(missingValueHandling.getEnabled())) {
+			return;
+		}
+		final List<String> anchorPriority = missingValueHandling.getAnchorPriority();
+		if (anchorPriority == null || anchorPriority.isEmpty()) {
+			throw new DataOwnerConfigException(
+					"'missingValueHandling.enabled' e' true ma 'anchorPriority' e' assente o vuoto in " + jsonPath);
+		}
+		final Set<String> qidColumnNames = new HashSet<>();
+		for (final ColumnConfig column : columns) {
+			if (column.getRole() == ColumnRole.QID) {
+				qidColumnNames.add(column.getName());
+			}
+		}
+		for (final String anchorName : anchorPriority) {
+			if (!qidColumnNames.contains(anchorName)) {
+				throw new DataOwnerConfigException("'missingValueHandling.anchorPriority' referenzia '" + anchorName
+						+ "', che non corrisponde a nessuna colonna QID dichiarata in 'columns' (match case-sensitive) in "
+						+ jsonPath);
+			}
 		}
 	}
 
