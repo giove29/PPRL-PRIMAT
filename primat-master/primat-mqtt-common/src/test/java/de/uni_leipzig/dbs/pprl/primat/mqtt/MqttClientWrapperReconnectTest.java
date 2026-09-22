@@ -65,6 +65,44 @@ class MqttClientWrapperReconnectTest {
 		}
 	}
 
+	@Test
+	void publishWaitsForReconnectionInsteadOfFailing() throws Exception {
+		final int port = findFreePort();
+		final String brokerUrl = "tcp://localhost:" + port;
+
+		EmbeddedBrokerLauncher broker = new EmbeddedBrokerLauncher(port);
+		broker.start();
+
+		final BlockingQueue<String> received = new ArrayBlockingQueue<>(10);
+		final MqttClientWrapper subscriber = new MqttClientWrapper(brokerUrl, "subscriber2");
+		final MqttClientWrapper publisher = new MqttClientWrapper(brokerUrl, "publisher2");
+		try {
+			subscriber.connect();
+			subscriber.subscribe(TOPIC,
+					(topic, message) -> received.add(new String(message.getPayload(), StandardCharsets.UTF_8)));
+			publisher.connect();
+
+			broker.stop();
+			broker = new EmbeddedBrokerLauncher(port);
+			broker.start();
+
+			// Il subscriber deve aver ri-sottoscritto prima del publish, altrimenti il
+			// messaggio va perso lato broker indipendentemente dalla fix qui testata
+			// (cleanSession=true: nessuna sessione persistente tra un riavvio e l'altro).
+			// Sul PUBLISHER invece non c'e' nessuna attesa esplicita: publish() deve
+			// attendere internamente la propria riconnessione da solo.
+			assertTrue(waitUntilConnected(subscriber, 15), "il subscriber non si e' riconnesso al broker riavviato");
+			publisher.publish(TOPIC, "hello-after-restart-2");
+
+			final String message = received.poll(15, TimeUnit.SECONDS);
+			assertEquals("hello-after-restart-2", message);
+		} finally {
+			subscriber.disconnect();
+			publisher.disconnect();
+			broker.stop();
+		}
+	}
+
 	private static boolean waitUntilConnected(MqttClientWrapper client, int timeoutSeconds) throws InterruptedException {
 		final long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeoutSeconds);
 		while (System.currentTimeMillis() < deadline) {

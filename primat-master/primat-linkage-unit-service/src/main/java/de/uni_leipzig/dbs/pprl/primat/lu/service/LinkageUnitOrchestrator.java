@@ -329,6 +329,8 @@ public class LinkageUnitOrchestrator {
 			return;
 		}
 
+		System.out.println(config.describe());
+
 		final LinkageUnitOrchestrator orchestrator = new LinkageUnitOrchestrator(config);
 		orchestrator.start();
 		orchestrator.runOnce();

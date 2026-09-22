@@ -62,6 +62,7 @@ public final class DataOwnerConfigLoader {
 
 		final int bfLength = resolveBloomFilterLength(raw.getBloomFilter(), jsonPath);
 		final BloomFilterHardener hardener = resolveHardener(raw.getBloomFilter(), bfLength, jsonPath);
+		final List<String> hardeningDescriptions = describeHardeningChain(raw.getBloomFilter());
 
 		final DataSourceJsonConfig dataSource = raw.getDataSource();
 		final String csvFilePath = dataSource.getType() == DataSourceType.CSV ? dataSource.getCsv().getFilePath()
@@ -85,7 +86,7 @@ public final class DataOwnerConfigLoader {
 
 		return new DataOwnerConfig(raw.getParty(), dataSource.getType(), csvFilePath, csvHasHeader, csvDelimiter, dbConfig,
 				raw.getMqttBrokerUrl(), raw.getColumns(), bfLength, hardener, raw.isDebug(), missingValueHandlingEnabled,
-				missingValueAnchorPriority);
+				missingValueAnchorPriority, hardeningDescriptions);
 	}
 
 	private static String readFile(Path jsonPath) throws DataOwnerConfigException {
@@ -290,6 +291,44 @@ public final class DataOwnerConfigLoader {
 					+ jsonPath);
 		}
 		return length;
+	}
+
+	/**
+	 * Descrive in forma leggibile la catena di hardening gia' validata da
+	 * {@link #resolveHardener}, per uso esclusivamente di stampa (es.
+	 * {@link DataOwnerConfig#describe()}) - non partecipa alla codifica.
+	 *
+	 * @return lista ordinata delle descrizioni di ciascuno step, vuota se nessun hardening e' configurato
+	 */
+	private static List<String> describeHardeningChain(BloomFilterJsonConfig bloomFilter) {
+		if (bloomFilter == null) {
+			return List.of();
+		}
+		final List<HardeningJsonConfig> chain = bloomFilter.getHardeningChain();
+		if (chain != null && !chain.isEmpty()) {
+			final List<String> descriptions = new ArrayList<>();
+			for (final HardeningJsonConfig step : chain) {
+				descriptions.add(describeHardening(step));
+			}
+			return descriptions;
+		}
+		final HardeningJsonConfig single = bloomFilter.getHardening();
+		if (single != null && single.getType() != null && single.getType() != HardeningType.NONE) {
+			return List.of(describeHardening(single));
+		}
+		return List.of();
+	}
+
+	private static String describeHardening(HardeningJsonConfig hardening) {
+		switch (hardening.getType()) {
+			case BLIP:
+				final long seed = hardening.getSeed() != null ? hardening.getSeed() : DEFAULT_BLIP_SEED;
+				return "BLIP(probability=" + hardening.getProbability() + ", seed=" + seed + ")";
+			case XOR_FOLD:
+				return "XOR_FOLD(foldCount=" + hardening.getFoldCount() + ")";
+			default:
+				return hardening.getType().toString();
+		}
 	}
 
 	private static BloomFilterHardener resolveHardener(BloomFilterJsonConfig bloomFilter, int bfLength,

@@ -8,6 +8,7 @@ import java.util.List;
 
 import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hardening.BloomFilterHardener;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.ColumnConfig;
+import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.ColumnRole;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.DataOwnerConfigLoader;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.DataSourceType;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.DbSourceConfig;
@@ -36,6 +37,7 @@ public class DataOwnerConfig {
 	private final boolean debug;
 	private final boolean missingValueHandlingEnabled;
 	private final List<String> missingValueAnchorPriority;
+	private final List<String> hardeningDescriptions;
 
 	/**
 	 * Costruito esclusivamente da {@link DataOwnerConfigLoader} dopo la
@@ -60,11 +62,13 @@ public class DataOwnerConfig {
 	 *                                     {@code MissingValueBucketing} invece dei trigrammi di padding standard
 	 * @param missingValueAnchorPriority  nomi di colonna QID in ordine di priorita' per la scelta dell'anchor,
 	 *                                     vuota se {@code missingValueHandlingEnabled} e' {@code false}
+	 * @param hardeningDescriptions       descrizione leggibile di ciascuno step della catena di hardening
+	 *                                     (solo per {@link #describe()}), vuota se nessun hardening e' configurato
 	 */
 	public DataOwnerConfig(String party, DataSourceType dataSourceType, String csvFilePath, boolean csvHasHeader,
 			char csvDelimiter, DbSourceConfig dbConfig, String mqttBrokerUrl, List<ColumnConfig> columns, int bloomFilterLength,
 			BloomFilterHardener hardener, boolean debug, boolean missingValueHandlingEnabled,
-			List<String> missingValueAnchorPriority) {
+			List<String> missingValueAnchorPriority, List<String> hardeningDescriptions) {
 		this.party = party;
 		this.dataSourceType = dataSourceType;
 		this.csvFilePath = csvFilePath;
@@ -79,6 +83,7 @@ public class DataOwnerConfig {
 		this.debug = debug;
 		this.missingValueHandlingEnabled = missingValueHandlingEnabled;
 		this.missingValueAnchorPriority = missingValueAnchorPriority;
+		this.hardeningDescriptions = hardeningDescriptions;
 	}
 
 	public String getParty() {
@@ -143,5 +148,65 @@ public class DataOwnerConfig {
 	/** @return nomi di colonna QID in ordine di priorita' per la scelta dell'anchor (lista vuota se la tecnica e' disabilitata). */
 	public List<String> getMissingValueAnchorPriority() {
 		return missingValueAnchorPriority;
+	}
+
+	/**
+	 * @return descrizione leggibile, riga per riga, dell'intera configurazione
+	 *         ereditata dal JSON: ogni tecnica opzionale (hardening,
+	 *         missing-value handling, CWE per colonna) e' etichettata "On"/"Off"
+	 *         con i relativi parametri quando attiva. Pensata per essere
+	 *         stampata a schermo all'avvio del Data Owner (nessun dato in
+	 *         chiaro delle colonne, solo tuning/struttura).
+	 */
+	public String describe() {
+		final StringBuilder sb = new StringBuilder();
+		sb.append("==================== Data Owner [").append(party).append("] ====================\n");
+		sb.append("Broker MQTT:            ").append(mqttBrokerUrl).append('\n');
+		sb.append("Sorgente dati:          ").append(dataSourceType);
+		if (dataSourceType == DataSourceType.CSV) {
+			sb.append(" (file=").append(csvFilePath).append(", delimiter='").append(csvDelimiter)
+					.append("', hasHeader=").append(csvHasHeader).append(')');
+		}
+		else if (dbConfig != null) {
+			sb.append(" (table=").append(dbConfig.getTableName()).append(')');
+		}
+		sb.append('\n');
+		sb.append("Debug:                  ").append(debug ? "On" : "Off").append('\n');
+		sb.append("RBF length:             ").append(bloomFilterLength).append(" bit\n");
+		sb.append("Hardening:              ");
+		if (hardeningDescriptions.isEmpty()) {
+			sb.append("Off\n");
+		}
+		else {
+			sb.append("On -> ").append(String.join(" -> ", hardeningDescriptions)).append('\n');
+		}
+		sb.append("Missing-value handling: ").append(missingValueHandlingEnabled ? "On" : "Off");
+		if (missingValueHandlingEnabled) {
+			sb.append(" (anchorPriority=").append(missingValueAnchorPriority).append(')');
+		}
+		sb.append('\n');
+		sb.append("Colonne QID:\n");
+		for (final ColumnConfig column : columns) {
+			if (column.getRole() != ColumnRole.QID) {
+				continue;
+			}
+			sb.append("  - ").append(column.getName())
+					.append(" [dataType=").append(column.getDataType())
+					.append(", hashFunctions=").append(column.getHashFunctionsOrDefault())
+					.append(", salt=\"").append(column.getSaltOrDefault()).append('"')
+					.append(", CWE=");
+			if (column.isConstantWeightEncodingEnabled()) {
+				sb.append("On (minTrigrams=").append(column.getConstantWeightEncoding().getMinTrigrams())
+						.append(", maxTrigrams=").append(column.getConstantWeightEncoding().getMaxTrigrams())
+						.append(')');
+			}
+			else {
+				sb.append("Off");
+			}
+			sb.append(", missingValueTokenCount=").append(column.getMissingValueTokenCountOrDefault())
+					.append("]\n");
+		}
+		sb.append("=======================================================");
+		return sb.toString();
 	}
 }

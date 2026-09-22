@@ -7,6 +7,8 @@ package de.uni_leipzig.dbs.pprl.primat.dataowner.service;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 import org.eclipse.paho.client.mqttv3.MqttException;
@@ -40,6 +42,25 @@ public class DataOwnerService {
 	private final DataOwnerConfig config;
 	private final MqttClientWrapper client;
 	private final Gson gson = new Gson();
+	/**
+	 * Esegue {@link #handleStartCommand} fuori dal thread di callback di Paho
+	 * ({@code CommsCallback}), che è lo stesso thread su cui vengono anche
+	 * notificati i completamenti (ack) delle {@code publish()} sincrone e la
+	 * consegna di ogni messaggio successivo per questo client: elaborare la
+	 * pipeline (potenzialmente lunga, minuti su CSV grandi) e poi pubblicare
+	 * l'RBF direttamente dentro il listener di {@link #start()} blocca quel
+	 * thread, quindi qualunque comando ripubblicato nel frattempo dalla
+	 * Linkage Unit resta in coda e non viene mai gestito finché la chiamata
+	 * corrente non ritorna — visto dall'esterno, il Data Owner sembra
+	 * "in ascolto" (la connessione TCP resta viva) ma non risponde più a
+	 * nulla. Un solo thread basta: i comandi per questo party vanno comunque
+	 * gestiti in sequenza, non in parallelo.
+	 */
+	private final ExecutorService commandExecutor = Executors.newSingleThreadExecutor(runnable -> {
+		final Thread thread = new Thread(runnable, "data-owner-command-worker");
+		thread.setDaemon(true);
+		return thread;
+	});
 
 	/**
 	 * @param config configurazione locale del Data Owner (party, sorgente dati,
@@ -64,7 +85,7 @@ public class DataOwnerService {
 		client.subscribe(MqttTopics.commandTopic(config.getParty()), (topic, message) -> {
 			final StartCommand command = gson.fromJson(new String(message.getPayload(), StandardCharsets.UTF_8),
 					StartCommand.class);
-			handleStartCommand(command);
+			commandExecutor.submit(() -> handleStartCommand(command));
 		});
 		System.out.println("[" + config.getParty() + "] in ascolto su " + MqttTopics.commandTopic(config.getParty()));
 	}
@@ -163,6 +184,8 @@ public class DataOwnerService {
 			System.exit(1);
 			return;
 		}
+
+		System.out.println(config.describe());
 
 		final DataOwnerService service = new DataOwnerService(config);
 		service.start();

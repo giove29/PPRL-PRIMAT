@@ -26,6 +26,8 @@ public class MqttClientWrapper {
 
 	private static final int QOS = 1;
 	private static final long RETRY_DELAY_MILLIS = 2000L;
+	private static final long PUBLISH_WAIT_POLL_MILLIS = 200L;
+	private static final long PUBLISH_WAIT_TIMEOUT_SECONDS = 30L;
 
 	private final MqttClient client;
 	private final List<Subscription> subscriptions = new CopyOnWriteArrayList<>();
@@ -87,16 +89,50 @@ public class MqttClientWrapper {
 	}
 
 	/**
-	 * Pubblica un payload testuale (tipicamente JSON) con QoS 1.
+	 * Pubblica un payload testuale (tipicamente JSON) con QoS 1. Se il client è
+	 * momentaneamente disconnesso (es. keep-alive scaduto sotto carico), attende
+	 * la riconnessione automatica di Paho fino a {@link #PUBLISH_WAIT_TIMEOUT_SECONDS}
+	 * invece di fallire subito con un criptico "Client non connesso".
 	 *
 	 * @param topic   topic di destinazione
 	 * @param payload corpo del messaggio, codificato UTF-8
-	 * @throws MqttException se la pubblicazione fallisce
+	 * @throws MqttException          se la pubblicazione fallisce
+	 * @throws IllegalStateException se il client non si riconnette entro il timeout
 	 */
 	public void publish(String topic, String payload) throws MqttException {
+		waitUntilConnected(topic);
 		final MqttMessage message = new MqttMessage(payload.getBytes(StandardCharsets.UTF_8));
 		message.setQos(QOS);
 		client.publish(topic, message);
+	}
+
+	/**
+	 * Attende, con polling, che {@link #isConnected()} torni {@code true} - la
+	 * riconnessione automatica di Paho (attiva dopo la prima connessione, vedi
+	 * {@link #connect(long)}) non e' sincrona con {@code publish()}, quindi senza
+	 * questa attesa un publish durante la finestra di riconnessione fallirebbe
+	 * con reason code 32104 anche quando il client si sarebbe ririconnesso un
+	 * istante dopo.
+	 *
+	 * @throws IllegalStateException se il client resta disconnesso oltre {@link #PUBLISH_WAIT_TIMEOUT_SECONDS}
+	 */
+	private void waitUntilConnected(String topic) throws MqttException {
+		if (client.isConnected()) {
+			return;
+		}
+		final long deadlineNanos = System.nanoTime() + PUBLISH_WAIT_TIMEOUT_SECONDS * 1_000_000_000L;
+		while (!client.isConnected()) {
+			if (System.nanoTime() - deadlineNanos >= 0) {
+				throw new IllegalStateException("Client MQTT non riconnesso al broker " + client.getServerURI()
+						+ " entro " + PUBLISH_WAIT_TIMEOUT_SECONDS + "s: impossibile pubblicare su " + topic);
+			}
+			try {
+				Thread.sleep(PUBLISH_WAIT_POLL_MILLIS);
+			} catch (InterruptedException ie) {
+				Thread.currentThread().interrupt();
+				throw new MqttException(ie);
+			}
+		}
 	}
 
 	/**

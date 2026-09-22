@@ -364,6 +364,18 @@ public class DbConnection {
 				+ "LEFT JOIN FETCH r.attributes",
 			Record.class).getResultList();
 
+		// Query separata (stessa Session, righe sotto): vedi il commento
+		// equivalente in getCandidateClusters, stesso motivo — fetchare anche
+		// r.blockingKeys nella query sopra moltiplicherebbe ulteriormente un
+		// fan-out già a 2 collezioni per record.
+		if (!records.isEmpty()) {
+			entityManager.createQuery(
+				"SELECT r FROM Record r LEFT JOIN FETCH r.blockingKeys WHERE r IN :records",
+				Record.class)
+				.setParameter("records", records)
+				.getResultList();
+		}
+
 		entityManager.getTransaction().commit();
 
 		return records;
@@ -415,6 +427,26 @@ public class DbConnection {
 			q.setParameter("ids", ids);
 
 			final Set<Cluster> clusters = new HashSet<>(q.getResultList());
+
+			// Query separata, stessa EntityManager/Session: inizializza
+			// record.blockingKeys sulle stesse istanze già managed (Hibernate le
+			// riconosce per id, non ne crea copie) senza aggiungere una quarta
+			// collezione alla query sopra. Fetchare 3 collezioni insieme
+			// (records/attributes/clusterBlockingKeys) produce già un fan-out
+			// combinatorio sulle righe SQL restituite; una quarta (le blocking
+			// key per-record, tante quante le chiavi LSH configurate) moltiplica
+			// ulteriormente quel fan-out fino a esaurire lo heap con migliaia di
+			// cluster storici (osservato: OutOfMemoryError con 7188 cluster).
+			final List<Record> allRecords = clusters.stream()
+				.flatMap(c -> c.getRecords().stream())
+				.collect(Collectors.toList());
+			if (!allRecords.isEmpty()) {
+				entityManager.createQuery(
+					"SELECT r FROM Record r LEFT JOIN FETCH r.blockingKeys WHERE r IN :records",
+					Record.class)
+					.setParameter("records", allRecords)
+					.getResultList();
+			}
 
 			entityManager.getTransaction().commit();
 

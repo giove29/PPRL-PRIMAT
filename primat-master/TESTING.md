@@ -72,7 +72,7 @@ Un JSON non valido (file assente, sintassi errata, colonne inconsistenti, ...) t
 
 **Nota importante**: i Data Owner possono essere avviati anche PRIMA del broker — `MqttClientWrapper.connect()` ritenta la connessione all'infinito (ogni 2s) finché non è raggiungibile. Il broker va comunque avviato (sezione 2bis) prima di far partire la Linkage Unit.
 
-Output atteso per ciascun Data Owner all'avvio: `[A] in ascolto su primat/do/A/cmd`.
+Output atteso per ciascun Data Owner all'avvio: prima un riepilogo leggibile dell'intera configurazione ereditata dal JSON (`DataOwnerConfig.describe()`, 2026-09-22) — party, broker, sorgente dati, RBF length, hardening (`Off` o `On -> STEP(parametri)`), missing-value handling (`On`/`Off` + `anchorPriority`), e per ogni colonna QID `dataType`/`hashFunctions`/`salt`/CWE (`On`/`Off` + soglie)/`missingValueTokenCount` — poi `[A] in ascolto su primat/do/A/cmd`.
 
 ## 4. Avvio dell'orchestratore (Linkage Unit)
 
@@ -87,6 +87,7 @@ Il JSON ha il campo obbligatorio top-level `"mqttBrokerUrl": "tcp://localhost:18
 Sostituire `mscd_ap.json` con `center_clustering.json` / `mcl.json` / `global_greedy.json` / `clip.json` per le altre 4 strategie (ciascuno un run a sé, ripetibile con gli stessi Data Owner senza riavviarli — basta rilanciare `exec:java` con un JSON diverso). `global_greedy.json`/`clip.json` richiedono party tutte `duplicateFree: true` (vincolo più stretto di MSCD-AP, che ne richiede solo una): un JSON con anche una sola party dirty viene rifiutato al caricamento con `LinkageUnitConfigException`.
 
 Output atteso, in ordine:
+0. Un riepilogo leggibile dell'intera configurazione ereditata dal JSON (`LinkageUnitConfig.describe()`, 2026-09-22, mirror del Data Owner) — broker, strategia, soglia di similarità, `rbfSize`, tuning JaccardLSH, persistenza (DB o CSV), tuning MQTT, elenco party.
 1. `comando pubblicato su primat/do/<party>/cmd` (ripetuto ogni `rbfRepublishIntervalSeconds` finché non arrivano tutti gli RBF)
 2. `record ricevuti per party` — conteggio record per A/B/C
 3. `Blocking (JaccardLSH) - blocchi: N` — un solo blocker (JaccardLSH), nessun confronto con HammingLSH

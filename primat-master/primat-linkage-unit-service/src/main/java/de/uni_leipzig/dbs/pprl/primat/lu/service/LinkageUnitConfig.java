@@ -199,4 +199,40 @@ public class LinkageUnitConfig {
 		}
 		return dbConnection;
 	}
+
+	/**
+	 * @return riepilogo leggibile dell'intera configurazione ereditata dal JSON
+	 *         (party, strategia, tuning blocking/MQTT, persistenza), pensato per
+	 *         essere stampato a schermo all'avvio della Linkage Unit, mirror di
+	 *         {@code DataOwnerConfig.describe()}. Nessun dato in chiaro dei
+	 *         record, solo tuning/struttura (la password del DB non è incluta).
+	 */
+	public String describe() {
+		final StringBuilder sb = new StringBuilder();
+		sb.append("==================== Linkage Unit ====================\n");
+		sb.append("Broker MQTT:            ").append(mqttBrokerUrl).append('\n');
+		sb.append("Strategia:              ").append(clusteringMethod).append('\n');
+		sb.append("Soglia similarita':     ").append(similarityThreshold).append('\n');
+		sb.append("RBF size (informativo): ").append(rbfSize != null ? rbfSize + " bit" : "non impostato").append('\n');
+		sb.append("Blocking (JaccardLSH):  keySize=").append(lshKeySize).append(", keys=").append(lshKeys)
+				.append(", valueRange=").append(lshValueRange).append(", seed=").append(lshSeed).append('\n');
+		sb.append("Persistenza:            ");
+		if (persistenceEnabled) {
+			sb.append("DB (url=").append(dbUrl).append(", user=").append(dbUser).append(')');
+		}
+		else {
+			sb.append("CSV (path=").append(csvOutputPath).append(')');
+		}
+		sb.append('\n');
+		sb.append("MQTT tuning:            brokerConnectTimeout=").append(brokerConnectTimeoutSeconds)
+				.append("s, rbfCollectionTimeout=").append(rbfCollectionTimeoutSeconds)
+				.append("s, rbfRepublishInterval=").append(rbfRepublishIntervalSeconds).append("s\n");
+		sb.append("Party:\n");
+		for (final Party party : parties) {
+			sb.append("  - ").append(party.getName()).append(" [duplicateFree=").append(party.isDuplicateFree())
+					.append("]\n");
+		}
+		sb.append("=======================================================");
+		return sb.toString();
+	}
 }

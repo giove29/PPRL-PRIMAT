@@ -21,6 +21,7 @@
     "enabled": true,
     "anchorPriority": ["LN", "FN", "YOB", "BIRTH_PLACE", "CITY", "MN"]
   },
+  "_comment_missingValueTokenCount": "k (numero di token sintetici per un attributo vuoto) si risolve colonna per colonna con priorita': 1) 'missingValueTokenCount' esplicito se presente (vedi MN=5 e YOB=3 sotto: l'override vince sempre, anche se la CWE e' abilitata) 2) altrimenti 'constantWeightEncoding.minTrigrams' se la CWE e' abilitata per quella colonna (es. FN, LN, BIRTH_PLACE, CITY: nessun override qui, quindi usano il proprio minTrigrams) 3) altrimenti il default hardcoded ColumnConfig.DEFAULT_MISSING_VALUE_TOKEN_COUNT=7 (nessuna colonna di questo esempio arriva a questo terzo caso, perche' tutte hanno la CWE abilitata).",
   "columns": [
     { "index": 0, "name": "PARTY", "role": "PARTY" },
     { "index": 1, "name": "GLOBAL_ID", "role": "GLOBAL_ID" },
@@ -33,7 +34,8 @@
     { "index": 5, "name": "LN", "role": "QID", "dataType": "TEXT", "hashFunctions": 25, "salt": "LN_",
       "constantWeightEncoding": { "enabled": true, "minTrigrams": 4, "maxTrigrams": 14 } },
     { "index": 6, "name": "YOB", "role": "QID", "dataType": "NUMERIC", "hashFunctions": 25, "salt": "YOB_",
-      "constantWeightEncoding": { "enabled": true, "minTrigrams": 5, "maxTrigrams": 7 } },
+      "constantWeightEncoding": { "enabled": true, "minTrigrams": 5, "maxTrigrams": 7 },
+      "missingValueTokenCount": 3 },
     { "index": 7, "name": "BIRTH_PLACE", "role": "QID", "dataType": "TEXT", "hashFunctions": 6, "salt": "BIRTHPLACE_",
       "constantWeightEncoding": { "enabled": true, "minTrigrams": 3, "maxTrigrams": 12 } },
     { "index": 9, "name": "CITY", "role": "QID", "dataType": "TEXT", "hashFunctions": 4, "salt": "CITY_",
