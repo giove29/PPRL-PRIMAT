@@ -69,31 +69,14 @@ public final class BlockingEvaluator {
 	 * @param  expectedMatches the total number of true matches in the gold
 	 *                         standard.
 	 * @return                 the computed {@link BlockingEvaluationResult}.
+	 *                         Within-party candidate pairs are counted for a
+	 *                         given party if and only if that specific
+	 *                         {@link Party#isDuplicateFree()} is {@code false}
+	 *                         (dirty) — decided per party, not by a single
+	 *                         global flag, so a block mixing dirty and clean
+	 *                         parties is handled correctly.
 	 */
 	public BlockingEvaluationResult evaluate(Collection<Block> blocks, long maxComparisons, long expectedMatches) {
-		return evaluate(blocks, maxComparisons, expectedMatches, false);
-	}
-
-	/**
-	 * @param  blocks            the blocks produced by the blocking step to
-	 *                           evaluate.
-	 * @param  maxComparisons    the size of the full cross product without any
-	 *                           blocking, e.g. as computed by
-	 *                           {@link PerformanceMetrics#getMaxComparisons}.
-	 * @param  expectedMatches   the total number of true matches in the gold
-	 *                           standard.
-	 * @param  selfPairsAllowed  {@code true} for a single-source deduplication
-	 *                           run (exactly one party overall): within-party
-	 *                           pairs are then counted too, same rule as
-	 *                           {@code MultiSourceLinkage#selfPairsAllowed}
-	 *                           (a block can then only ever contain that one
-	 *                           party, so this never mixes with cross-party
-	 *                           counting). {@code false} preserves the
-	 *                           original cross-party-only behaviour.
-	 * @return                   the computed {@link BlockingEvaluationResult}.
-	 */
-	public BlockingEvaluationResult evaluate(Collection<Block> blocks, long maxComparisons, long expectedMatches,
-			boolean selfPairsAllowed) {
 		long candidatePairs = 0;
 		long trueMatchesInBlocks = 0;
 		final Set<Map.Entry<Record, Record>> seenPairs = new HashSet<>();
@@ -123,7 +106,7 @@ public final class BlockingEvaluator {
 					}
 				}
 
-				if (selfPairsAllowed) {
+				if (!parties.get(i).isDuplicateFree()) {
 					final List<Record> records = new ArrayList<>(block.getPartySubBlock(parties.get(i)).getRecords());
 					for (int a = 0; a < records.size(); a++) {
 						for (int b = a + 1; b < records.size(); b++) {

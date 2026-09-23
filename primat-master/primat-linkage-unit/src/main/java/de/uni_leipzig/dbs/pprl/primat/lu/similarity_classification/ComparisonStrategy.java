@@ -13,6 +13,7 @@
  *******************************************************************************/
 package de.uni_leipzig.dbs.pprl.primat.lu.similarity_classification;
 
+import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -21,7 +22,7 @@ import de.uni_leipzig.dbs.pprl.primat.common.model.PartyPair;
 import de.uni_leipzig.dbs.pprl.primat.common.utils.SetUtils;
 
 /**
- * 
+ *
  * @author mfranke
  *
  */
@@ -40,6 +41,28 @@ public enum ComparisonStrategy {
 		public Set<PartyPair> getPartyPairs(Set<Party> parties) {
 			return SetUtils.orderedAntiSymmetricCartesianSquare(parties).stream().map(p -> new PartyPair(p))
 				.collect(Collectors.toSet());
+		}
+	},
+
+	/**
+	 * Confronto cross-party sempre (come {@link #SOURCE_CONSISTENT}) più una
+	 * coppia identità party-con-se-stessa per ogni party con
+	 * {@code duplicateFree=false}, indipendentemente da quante altre party
+	 * sono presenti: a differenza di {@link #SOURCE_INCONSISTENT} (che
+	 * genererebbe una identity pair per OGNI party, anche quelle clean),
+	 * questa strategia guarda {@link Party#isDuplicateFree()} di ciascuna
+	 * party singolarmente, non la cardinalità dell'insieme. Per un insieme di
+	 * una sola party (sempre dirty, per costruzione: la config loader rifiuta
+	 * un'unica party clean) collassa a {@link #SOURCE_INCONSISTENT}; per un
+	 * insieme di 2+ party tutte clean collassa a {@link #SOURCE_CONSISTENT}.
+	 */
+	DIRTY_AWARE {
+		@Override
+		public Set<PartyPair> getPartyPairs(Set<Party> parties) {
+			final Set<PartyPair> pairs = SetUtils.getIrreflexiveClosure(parties).stream().map(p -> new PartyPair(p))
+					.collect(Collectors.toCollection(HashSet::new));
+			parties.stream().filter(p -> !p.isDuplicateFree()).forEach(p -> pairs.add(new PartyPair(p, p)));
+			return pairs;
 		}
 	};
 

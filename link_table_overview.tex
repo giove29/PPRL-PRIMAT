@@ -1,0 +1,486 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Pacchetti ----------
+\usepackage[italian]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,shapes.multipart,calc}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{parskip}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!50!black,
+    urlcolor=blue!50!black
+}
+
+% ---------- Colori ----------
+\definecolor{doColor}{RGB}{224,242,254}
+\definecolor{doBorder}{RGB}{2,132,199}
+\definecolor{luColor}{RGB}{254,242,224}
+\definecolor{luBorder}{RGB}{194,120,3}
+\definecolor{brokerColor}{RGB}{237,233,254}
+\definecolor{brokerBorder}{RGB}{109,40,217}
+\definecolor{dbColor}{RGB}{220,252,231}
+\definecolor{dbBorder}{RGB}{21,128,61}
+\definecolor{clusterA}{RGB}{219,234,254}
+\definecolor{clusterB}{RGB}{254,226,226}
+\definecolor{clusterC}{RGB}{220,252,231}
+
+\lstdefinestyle{jsonstyle}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    columns=fullflexible,
+    backgroundcolor=\color{gray!8},
+    frame=single,
+    rulecolor=\color{gray!40},
+    xleftmargin=4pt,
+    xrightmargin=4pt
+}
+\lstset{style=jsonstyle}
+
+\title{\textbf{Come la Linkage Unit costruisce, persiste \\ e aggiorna la Link Table}\\[4pt]
+\large Panoramica architetturale ad alto livello --- progetto PRIMAT}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1.2cm}
+
+\section{Introduzione}
+
+PRIMAT \`e un sistema di \emph{Privacy-Preserving Record Linkage} (PPRL): pi\`u
+\textbf{Data Owner} (DO) --- ciascuno titolare di una propria base dati contenente
+informazioni identificative su persone --- vogliono scoprire quali dei loro record
+si riferiscono alla stessa entit\`a reale, senza mai condividere i dati in chiaro
+tra loro. A occuparsi di questo compito \`e la \textbf{Linkage Unit} (LU): un
+componente centrale che riceve dai Data Owner solo impronte offuscate dei record
+(\emph{Bloom Filter}), calcola quali impronte si assomigliano abbastanza da
+rappresentare la stessa persona, e mantiene nel tempo una \textbf{Link Table}:
+la struttura che collega i record delle varie sorgenti allo stesso identificativo
+pseudonimizzato.
+
+Questo documento descrive, ad alto livello e senza entrare nei dettagli
+implementativi o matematici, quattro aspetti:
+\begin{enumerate}[nosep]
+    \item come la LU costruisce la Link Table la prima volta;
+    \item come questa struttura viene resa persistente;
+    \item come funziona l'aggiornamento incrementale quando arrivano nuovi record;
+    \item come l'ambiente cos\`i prodotto si presta naturalmente a essere interrogato
+        da un motore di query federata (es. Trino) che unisce le sorgenti in una
+        vista globale pseudonimizzata.
+\end{enumerate}
+
+\section{Costruzione iniziale della Link Table}
+
+\subsection{Il flusso concettuale}
+
+Quando la Linkage Unit viene avviata per la prima volta su un insieme di Data
+Owner, non esiste ancora alcuna Link Table: viene costruita da zero seguendo
+quattro fasi concettuali, applicate a tutte le impronte ricevute:
+
+\begin{enumerate}
+    \item \textbf{Blocking}: invece di confrontare ogni record con tutti gli
+        altri (costo quadratico), i record vengono raggruppati in "blocchi"
+        tramite chiavi calcolate con tecniche di \emph{Locality Sensitive
+        Hashing} (LSH). Solo i record che condividono almeno una chiave di
+        blocco vengono confrontati fra loro.
+    \item \textbf{Calcolo della similarit\`a}: per ogni coppia di record
+        candidata si calcola un punteggio di somiglianza tra le rispettive
+        impronte.
+    \item \textbf{Classificazione}: le coppie con similarit\`a sopra una soglia
+        configurabile vengono marcate come "match" (stessa entit\`a probabile).
+    \item \textbf{Clustering}: i match vengono aggregati in gruppi (cluster) di
+        record che rappresentano la stessa persona, anche quando la catena di
+        somiglianze attraversa pi\`u di due sorgenti.
+    \end{enumerate}
+
+Il risultato di questa pipeline \`e proprio la Link Table iniziale: un insieme
+di cluster, ciascuno identificato da un id univoco (lo pseudonimo globale), che
+raggruppa i record provenienti da una o pi\`u sorgenti.
+
+\subsection{Configurabilit\`a}
+
+L'intero processo \`e guidato da un file di configurazione dichiarativo, non da
+codice: si specificano le sorgenti (Data Owner) coinvolte, la soglia di
+similarit\`a, i parametri dell'algoritmo di blocking e, soprattutto, la
+\textbf{strategia di clustering} da applicare. Sono disponibili pi\`u strategie
+intercambiabili, ciascuna con i propri parametri di tuning, pensate per scenari
+diversi (maggiore tolleranza al rumore, maggiore velocit\`a, garanzie diverse
+sulla qualit\`a dei cluster). La scelta della strategia e dei suoi parametri
+avviene quindi semplicemente cambiando la configurazione, senza toccare la
+logica applicativa.
+
+\subsection{Supporto di tutti i contesti dirty/clean}
+
+Una sorgente pu\`o essere \textbf{"dirty"} (pu\`o contenere pi\`u record che si
+riferiscono alla stessa persona, cio\`e ha bisogno anche di una deduplica
+interna) oppure \textbf{"clean"} (gi\`a deduplicata al suo interno). La LU
+supporta in modo nativo tutte le combinazioni:
+
+\begin{itemize}[nosep]
+    \item \textbf{dirty--dirty}: nessuna sorgente \`e gi\`a deduplicata;
+    \item \textbf{dirty--clean (mista)}: una o pi\`u sorgenti pulite convivono
+        con sorgenti sporche;
+    \item \textbf{clean--clean}: tutte le sorgenti sono gi\`a deduplicate,
+        serve solo collegarle tra loro;
+    \item \textbf{sorgente singola (deduplica)}: un solo Data Owner "dirty"
+        vuole scoprire i duplicati interni alla propria base dati, senza alcun
+        secondo Data Owner coinvolto.
+\end{itemize}
+
+Ognuno di questi scenari \`e semplicemente una diversa combinazione di
+configurazione (quali sorgenti sono dichiarate "pulite" e quale strategia di
+clustering si sceglie), non un percorso di codice separato.
+
+\subsection{Multi-sorgente per natura}
+
+Il matching non \`e limitato a due sole sorgenti confrontate a coppie: la LU
+costruisce un unico grafo di similarit\`a che pu\`o coinvolgere
+contemporaneamente un numero arbitrario di Data Owner. Un cluster pu\`o quindi
+raggruppare record provenienti da tre, quattro o pi\`u sorgenti differenti in
+un solo passaggio, se la catena di somiglianze lo giustifica.
+
+\subsection{Relazione tra Data Owner e Linkage Unit}
+
+I Data Owner non inviano mai dati identificativi in chiaro. Ogni Data Owner
+trasforma localmente i propri dati in un'impronta offuscata e irreversibile
+(un Bloom Filter costruito a partire da frammenti hashati dei campi
+identificativi) e la pubblica su un canale di messaggistica intermedio; la
+Linkage Unit si mette in ascolto su quello stesso canale, raccoglie le
+impronte di tutte le sorgenti coinvolte e avvia il calcolo. Il canale funge
+anche da tramite per i comandi di avvio inviati dalla LU ai Data Owner.
+
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    node distance=1.4cm and 2.6cm,
+    box/.style={rectangle, rounded corners, draw, minimum width=3cm, minimum height=1.1cm, align=center, font=\small},
+    do/.style={box, fill=doColor, draw=doBorder, thick},
+    broker/.style={box, fill=brokerColor, draw=brokerBorder, thick, minimum width=3.4cm},
+    lu/.style={box, fill=luColor, draw=luBorder, thick},
+    lbl/.style={font=\scriptsize, align=center},
+    arr/.style={-{Stealth[length=2.2mm]}, thick}
+]
+    \node[do] (doa) {Data Owner A\\[1pt]\scriptsize (dirty)};
+    \node[do, below=of doa] (dob) {Data Owner B\\[1pt]\scriptsize (clean)};
+    \node[do, below=of dob] (doc) {Data Owner C\\[1pt]\scriptsize (dirty)};
+
+    \node[broker, right=of dob] (broker) {Broker MQTT\\[1pt]\scriptsize (Moquette)};
+
+    \node[lu, right=of broker] (lu) {Linkage Unit};
+
+    \draw[arr] (doa) to[bend left=12] node[lbl, above, sloped]{\texttt{rbf/A}} (broker);
+    \draw[arr] (dob) -- node[lbl, above]{\texttt{rbf/B}} (broker);
+    \draw[arr] (doc) to[bend right=12] node[lbl, below, sloped]{\texttt{rbf/C}} (broker);
+
+    \draw[arr] (broker) -- node[lbl, above]{RBF ricevuti} (lu);
+
+    \draw[arr] (lu) to[bend left=18] node[lbl, below]{\texttt{cmd} (avvio run)} (broker);
+    \draw[arr] (broker) to[bend left=12] (doa);
+    \draw[arr] (broker) to[bend right=12] (doc);
+
+    \node[lbl, below=0.35cm of doc, xshift=2.2cm, text width=8.2cm] {
+        Sul canale viaggiano \textbf{solo impronte offuscate} (Bloom Filter) e
+        digest di configurazione: mai valori identificativi in chiaro.
+    };
+\end{tikzpicture}
+\caption{Relazione tra Data Owner e Linkage Unit: ciascun Data Owner pubblica
+la propria impronta offuscata su un broker di messaggistica condiviso; la
+Linkage Unit riceve le impronte di tutte le sorgenti coinvolte e coordina
+l'avvio di ogni esecuzione.}
+\end{figure}
+
+\clearpage
+\section{Persistenza della Link Table}
+
+\subsection{Il modello di storage}
+
+La Link Table non \`e un file volatile ricalcolato da zero a ogni esecuzione:
+viene salvata in un database relazionale, cos\`i che le esecuzioni successive
+possano ripartire da quanto gi\`a consolidato. Concettualmente lo schema \`e
+composto da poche entit\`a:
+
+\begin{itemize}[nosep]
+    \item \textbf{Party}: rappresenta un Data Owner registrato presso la LU.
+    \item \textbf{Record}: l'impronta di un singolo record ricevuto da una
+        Party, con un identificativo locale univoco (prefissato per evitare
+        collisioni tra sorgenti diverse).
+    \item \textbf{Cluster}: l'entit\`a "reale" riconosciuta nel tempo --- \`e
+        di fatto la riga della Link Table: il suo id \`e lo pseudonimo globale
+        condiviso da tutti i record che raggruppa.
+    \item \textbf{Chiavi di blocco}: le stesse chiavi usate in fase di
+        blocking vengono conservate accanto a record e cluster, cos\`i da
+        poter individuare rapidamente, in futuro, quali cluster storici sono
+        potenzialmente coinvolti da un nuovo record.
+\end{itemize}
+
+Ogni strategia di clustering scrive su un proprio spazio dati dedicato: questo
+mantiene isolate esecuzioni con strategie diverse e permette di confrontarne
+i risultati senza interferenze reciproche.
+
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    node distance=1.6cm and 2.2cm,
+    ent/.style={rectangle, rounded corners, draw, thick, align=center, font=\small, minimum height=1cm},
+    party/.style={ent, fill=doColor, draw=doBorder, minimum width=2.6cm},
+    rec/.style={ent, fill=luColor, draw=luBorder, minimum width=2.6cm},
+    clu/.style={ent, fill=dbColor, draw=dbBorder, minimum width=2.6cm},
+    blk/.style={ent, fill=brokerColor, draw=brokerBorder, minimum width=3.1cm},
+    rel/.style={font=\scriptsize},
+    line/.style={thick}
+]
+    \node[party] (party) {Party};
+    \node[rec, right=of party] (record) {Record};
+    \node[clu, right=of record] (cluster) {Cluster};
+    \node[blk, below=1.7cm of record, xshift=1.1cm] (block) {Chiave di blocco\\[1pt]\scriptsize (BlockingKeyAttribute)};
+
+    \draw[line] (party) -- (record) node[rel, midway, above]{1 -- N};
+    \draw[line] (record) -- (cluster) node[rel, midway, above]{N -- 1};
+    \draw[line] (record) to[bend right=15] node[rel, left]{N -- M} (block);
+    \draw[line] (cluster) to[bend left=15] node[rel, right]{N -- M} (block);
+
+    \node[ent, dashed, below=1.6cm of party, minimum width=3.6cm] (state)
+        {PartyEncodingState\\[1pt]\scriptsize (config attesa per party)};
+    \draw[line, dashed] (party) -- (state) node[rel, midway, left]{1 -- 1};
+\end{tikzpicture}
+\caption{Schema concettuale della persistenza: ogni Party ha molti Record, ogni
+Record appartiene a un solo Cluster (finch\'e non viene eventualmente fuso),
+Record e Cluster condividono le chiavi di blocco che permettono di ritrovarli
+rapidamente in futuro. \texttt{PartyEncodingState} verifica che una Party non
+cambi silenziosamente il modo in cui genera le proprie impronte tra
+un'esecuzione e l'altra.}
+\end{figure}
+
+\clearpage
+\subsection{Esempio minimo: prima inizializzazione}
+
+Supponiamo due Data Owner, \textbf{A} (dirty) e \textbf{B} (clean), che inviano
+alla LU le impronte di pochi record. Per rendere l'esempio leggibile, mostriamo
+qui i valori identificativi originali dei record: nella realt\`a questi valori
+\emph{non lasciano mai} il Data Owner, che trasmette solo l'impronta offuscata
+corrispondente.
+
+\begin{table}[h!]
+\centering
+\caption{Record in ingresso al primo run (valori mostrati solo a scopo
+illustrativo)}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Id record} & \textbf{Party} & \textbf{Nome} & \textbf{Cognome} \\
+\midrule
+A1 & A & Mario   & Rossi \\
+A2 & A & Mario   & Rossi \\
+A3 & A & Luca    & Bianchi \\
+B1 & B & Maria   & Verdi \\
+B2 & B & Mario   & Rossi \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Dopo blocking, calcolo di similarit\`a, classificazione e clustering, la LU
+riconosce che \texttt{A1}, \texttt{A2} e \texttt{B2} rappresentano la stessa
+persona (Mario Rossi, con un duplicato interno alla sorgente A), mentre
+\texttt{A3} e \texttt{B1} restano singoli. La Link Table risultante:
+
+\begin{table}[h!]
+\centering
+\caption{Link Table dopo la prima inizializzazione}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Cluster (pseudonimo globale)} & \textbf{Record contenuti} & \textbf{Party coinvolte} \\
+\midrule
+Cluster 1 & A1, A2, B2 & A, B \\
+Cluster 2 & A3         & A \\
+Cluster 3 & B1         & B \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    chip/.style={rectangle, rounded corners, draw, thick, minimum width=1.3cm, minimum height=0.8cm, font=\scriptsize, align=center},
+    lbl/.style={font=\scriptsize\itshape}
+]
+    \node[chip, fill=doColor, draw=doBorder] (a1) at (0,0) {A1};
+    \node[chip, fill=doColor, draw=doBorder, right=0.35cm of a1] (a2) {A2};
+    \node[chip, fill=luColor, draw=luBorder, right=0.35cm of a2] (b2) {B2};
+
+    \node[chip, fill=doColor, draw=doBorder, right=2.1cm of b2] (a3) {A3};
+
+    \node[chip, fill=luColor, draw=luBorder, right=2.1cm of a3] (b1) {B1};
+
+    \begin{scope}[on background layer]
+        \node[fit=(a1)(a2)(b2), draw=doBorder, thick, rounded corners,
+              fill=clusterA!35, inner sep=9pt,
+              label={above:{\bfseries\small Cluster 1}}] {};
+        \node[fit=(a3), draw=doBorder, thick, rounded corners,
+              fill=clusterB!45, inner sep=9pt,
+              label={above:{\bfseries\small Cluster 2}}] {};
+        \node[fit=(b1), draw=luBorder, thick, rounded corners,
+              fill=clusterC!45, inner sep=9pt,
+              label={above:{\bfseries\small Cluster 3}}] {};
+    \end{scope}
+
+    \node[lbl, below=0.9cm of a3, xshift=0cm, text width=10.5cm] {
+        L'id di ciascun cluster \`e lo pseudonimo globale usato per collegare
+        record di sorgenti diverse senza mai esporre i dati originali.
+    };
+\end{tikzpicture}
+\caption{Vista concettuale della Link Table: ogni cluster \`e un contenitore
+pseudonimizzato che raggruppa i record (di una o pi\`u sorgenti) riconosciuti
+come la stessa entit\`a.}
+\end{figure}
+
+\clearpage
+\section{Logica di Incrementing}
+
+Una volta che la Link Table esiste, la LU non deve ripartire da zero ogni
+volta che arrivano nuovi record: li integra in modo incrementale.
+
+\subsection{Il principio}
+
+Quando arriva un nuovo lotto di record:
+
+\begin{enumerate}
+    \item la LU non ricarica l'intero storico, ma recupera \emph{solo} i
+        cluster gi\`a esistenti che condividono almeno una chiave di blocco
+        con uno dei record nuovi (i "candidati");
+    \item l'appartenenza ai cluster gi\`a persistiti viene presa come punto di
+        partenza fisso: un legame stabilito in un'esecuzione precedente non
+        pu\`o mai essere smontato da un'esecuzione successiva;
+    \item i nuovi match vengono poi applicati sopra questa base, e per ogni
+        gruppo di record risultante si determina l'esito confrontandolo con i
+        cluster storici coinvolti:
+    \begin{itemize}[nosep]
+        \item \textbf{nessun cluster storico coinvolto} $\rightarrow$ si crea
+            un \emph{nuovo cluster};
+        \item \textbf{un solo cluster storico coinvolto} $\rightarrow$ il
+            cluster \emph{cresce}, incorporando i record nuovi;
+        \item \textbf{pi\`u cluster storici coinvolti} $\rightarrow$ i cluster
+            vengono \emph{fusi} in uno solo (l'id pi\`u basso viene mantenuto
+            come identificativo del cluster risultante).
+    \end{itemize}
+\end{enumerate}
+
+In altre parole: un cluster pu\`o solo crescere o fondersi con altri, mai
+essere diviso silenziosamente da un'esecuzione successiva.
+
+\subsection{Esempio minimo: arrivo di nuovi record}
+
+Riprendiamo la Link Table dell'esempio precedente (Cluster 1 = \{A1, A2, B2\},
+Cluster 2 = \{A3\}, Cluster 3 = \{B1\}).
+
+\medskip
+\noindent\textbf{Caso 1 --- crescita di un cluster.} Un terzo Data Owner
+\textbf{C} invia un nuovo record \texttt{C1 = "Mario Rossi"}. La LU trova che
+\texttt{C1} corrisponde al Cluster 1 gi\`a esistente:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+ & \textbf{Prima} & \textbf{Dopo l'arrivo di C1} \\
+\midrule
+Cluster 1 & A1, A2, B2 & A1, A2, B2, \textbf{C1} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Caso 2 --- fusione di due cluster.} Successivamente arriva un
+nuovo record \texttt{C2} da C che, a sua volta, risulta simile sia a
+\texttt{A3} (Cluster 2) sia a \texttt{B1} (Cluster 3): \`e un "record ponte"
+che rivela che i due cluster storici in realt\`a rappresentano la stessa
+persona.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+ & \textbf{Prima} & \textbf{Dopo l'arrivo di C2} \\
+\midrule
+Cluster 2 & A3  & \multirow{2}{*}{Cluster 2 (fuso): A3, B1, \textbf{C2}} \\
+Cluster 3 & B1  &  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Il Cluster 3 viene svuotato e i suoi record vengono ripuntati sul Cluster 2
+(id pi\`u basso), che diventa il cluster risultante della fusione.
+
+\section{Estensioni possibili: DELETE e UPDATE di record storici}
+
+Lo schema descritto finora copre l'inserimento di record nuovi, ma non ancora
+la loro rimozione o correzione. \`E ragionevole immaginare un'estensione in
+cui un Data Owner possa richiedere esplicitamente, tramite un canale
+dedicato, la cancellazione o la modifica di un proprio record gi\`a linkato
+in passato. Si tratta di una funzionalit\`a \textbf{non implementata a oggi},
+qui discussa solo a livello di principio:
+
+\begin{itemize}
+    \item \textbf{DELETE esplicito}: il Data Owner segnala l'id di un proprio
+        record da rimuovere. La LU dovrebbe scollegare il record dal proprio
+        cluster senza dover ripetere l'intero calcolo di linkage: se il
+        cluster conteneva altri record, resta valido e si riduce soltanto; se
+        il record era l'unico membro del cluster, il cluster stesso viene
+        eliminato.
+    \item \textbf{UPDATE esplicito}: una correzione ai dati di un record pu\`o
+        essere trattata come una cancellazione seguita da un nuovo inserimento
+        con l'impronta aggiornata, rientrando cos\`i nella normale logica di
+        incrementing gi\`a descritta, senza bisogno di un percorso separato.
+    \item \textbf{Implicazioni da considerare}: un canale di richiesta
+        esplicito e autenticato lato Data Owner, tracciabilit\`a delle
+        modifiche per finalit\`a di audit, e la possibilit\`a che la rimozione
+        di un record "ponte" renda necessario valutare se un cluster fuso in
+        passato debba essere ricontrollato.
+\end{itemize}
+
+\section{Verso l'interrogazione federata: come la Link Table prepara il terreno}
+
+L'integrazione di un motore di query federata (ad esempio Trino) che unisca le
+sorgenti dei Data Owner e la Link Table in un'unica vista globale \`e in corso
+di sviluppo separatamente e non \`e oggetto di questo documento. Vale per\`o la
+pena osservare \emph{perch\'e} l'ambiente che la Linkage Unit gi\`a produce si
+presta naturalmente a questo tipo di interrogazione:
+
+\begin{itemize}
+    \item \textbf{Schema relazionale standard}: la Link Table vive in un
+        database relazionale interrogabile con un connettore JDBC comune, senza
+        bisogno di adattatori dedicati o formati proprietari.
+    \item \textbf{Chiave di join gi\`a pseudonimizzata}: l'id di cluster \`e
+        esattamente lo pseudonimo globale che un motore federato userebbe come
+        chiave di join tra le tabelle dei diversi Data Owner, senza mai dover
+        transitare per dati identificativi in chiaro.
+    \item \textbf{Identificativi senza collisioni}: gli id dei record sono
+        prefissati per sorgente, cos\`i che una vista che unisce pi\`u Data
+        Owner non incontri mai ambiguit\`a tra record di provenienza diversa.
+    \item \textbf{Spazi dati isolati e prevedibili}: ogni strategia di
+        clustering scrive nel proprio spazio dati dedicato, cos\`i un motore
+        di interrogazione pu\`o scegliere in modo esplicito quale "versione"
+        della Link Table consultare, senza risultati misti o ambigui.
+    \item \textbf{Coerenza gi\`a garantita a monte}: i controlli di coerenza
+        che la LU esegue tra le sorgenti (stessa configurazione di codifica,
+        stessa dimensione delle impronte) assicurano che i dati letti da un
+        motore federato siano sempre internamente consistenti, senza bisogno
+        che sia il motore di query a doverlo verificare.
+\end{itemize}
+
+In sintesi: il lavoro della Linkage Unit non produce soltanto i collegamenti
+tra i record, ma un ambiente dati gi\`a pulito, stabile e pseudonimizzato ---
+esattamente il presupposto di cui un livello di virtual data integration ha
+bisogno per poter interrogare pi\`u sorgenti come se fossero un'unica vista
+coerente.
+
+\end{document}

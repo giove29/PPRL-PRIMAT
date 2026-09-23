@@ -129,4 +129,42 @@ class BlockingEvaluatorTest {
 		assertEquals(1.0, result.getPairsCompleteness(), 1e-9);
 		assertEquals(1.0, result.getPairsQuality(), 1e-9);
 	}
+
+	@Test
+	void countsWithinPartyPairsOnlyForDirtyPartiesInAMixedBlock() {
+		// party A clean (2 record, mai confrontata con se stessa), party B
+		// dirty (2 record, si', within-party ammessa) nello stesso blocco.
+		final Party partyA = new Party("A", true);
+		final Party partyB = new Party("B", false);
+
+		final Record a1 = record("a1", "g1", partyA);
+		final Record a2 = record("a2", "g2", partyA);
+		final Record b1 = record("b1", "g1", partyB);
+		final Record b2 = record("b2", "g1", partyB);
+
+		final Block block = new Block();
+		block.add(partyA, a1);
+		block.add(partyA, a2);
+		block.add(partyB, b1);
+		block.add(partyB, b2);
+
+		final BlockingEvaluator evaluator = new BlockingEvaluator(new IdEqualityTrueMatchChecker());
+
+		// cross A-B: 2*2=4 (a1-b1, a1-b2, a2-b1, a2-b2), within B: 1 (b1-b2),
+		// within A: 0 (mai contata, A e' clean) => 5 candidate pairs totali
+		final long maxComparisons = 5;
+		// g1 compare 3 volte (a1,b1,b2): 3 coppie vere (a1-b1, a1-b2, b1-b2)
+		final long expectedMatches = 3;
+
+		final BlockingEvaluationResult result = evaluator.evaluate(Arrays.asList(block), maxComparisons,
+			expectedMatches);
+
+		assertEquals(5, result.getCandidatePairs());
+		// veri match tra i candidati: a1-b1 (g1), a1-b2 (g1), b1-b2 (g1, within party B dirty);
+		// a2-b1/a2-b2 sono candidati ma non veri match (g2 != g1)
+		assertEquals(3, result.getTrueMatchesInBlocks());
+		assertEquals(0.0, result.getReductionRatio(), 1e-9);
+		assertEquals(1.0, result.getPairsCompleteness(), 1e-9);
+		assertEquals(0.6, result.getPairsQuality(), 1e-9);
+	}
 }

@@ -395,11 +395,11 @@ public class MultiSourceLinkage {
 			MultipartiteClusteringStrategy clusterer, double threshold) {
 		long phaseStart = System.nanoTime();
 		final Collection<Block> blocks = blocker.getBlocks(input);
-		final long maxComparisons = PerformanceMetrics.getMaxComparisons(input, comparisonStrategy(input));
+		final long maxComparisons = PerformanceMetrics.getMaxComparisons(input, ComparisonStrategy.DIRTY_AWARE);
 		lastMaxComparisons = maxComparisons;
 		final long expectedMatches = countGroundTruthMatches(input);
 		lastBlockingEvaluation = new BlockingEvaluator(new IdEqualityTrueMatchChecker())
-				.evaluate(blocks, maxComparisons, expectedMatches, selfPairsAllowed(input));
+				.evaluate(blocks, maxComparisons, expectedMatches);
 		phaseLine("Blocking (valutazione)", elapsedMillis(phaseStart));
 
 		phaseStart = System.nanoTime();
@@ -450,14 +450,12 @@ public class MultiSourceLinkage {
 		final TrueMatchChecker trueMatchChecker = new IdEqualityTrueMatchChecker();
 		final QualityEvaluator<Record> evaluator = new QualityEvaluator<>(trueMatchChecker);
 		// Le coppie cross-party contano sempre per TP/FP; le coppie within-party
-		// solo per una deduplicazione a sorgente singola (selfPairsAllowed, vedi
-		// countGroundTruthMatches, il cui denominatore usa la stessa regola) —
-		// altrimenti un duplicato within-party ritrovato correttamente gonfia la
-		// recall oltre 1 quando GT non lo conta.
-		final boolean selfPairsAllowed = selfPairsAllowed(input);
+		// solo per la party specifica di quella coppia, se dichiarata dirty (vedi
+		// countGroundTruthMatches, il cui denominatore usa la stessa regola per
+		// party) — altrimenti un duplicato within-party ritrovato correttamente
+		// gonfierebbe la recall oltre 1 quando GT non lo conta.
 		final List<LinkedPair<Record>> countedMatches = aggregatedMatches.stream()
-				.filter(p -> !p.getLeftRecord().getParty().getName().equals(p.getRight().getParty().getName())
-						|| selfPairsAllowed)
+				.filter(MultiSourceLinkage::countsForOutcome)
 				.collect(Collectors.toList());
 		evaluator.addMatches(countedMatches);
 
@@ -488,7 +486,7 @@ public class MultiSourceLinkage {
 	 *         postprocessing 1:1
 	 */
 	private LinkageResult<Record> classify(Map<Party, Collection<Record>> input, Blocker blocker, double threshold) {
-		final ComparisonStrategy comparisonStrategy = comparisonStrategy(input);
+		final ComparisonStrategy comparisonStrategy = ComparisonStrategy.DIRTY_AWARE;
 
 		final RecordSimilarityCalculator similarityCalculator = new BaseRecordSimilarityCalculator(
 				List.of(new BitSetAttributeSimilarityCalculator(List.of(BinarySimilarity.JACCARD_SIMILARITY))));
@@ -527,40 +525,31 @@ public class MultiSourceLinkage {
 	}
 
 	/**
-	 * @return {@code true} se questo run e' una deduplicazione a sorgente
-	 *         singola (un solo party in {@code input}, dichiarato
-	 *         {@code duplicateFree=false}): l'unico caso in cui una coppia
-	 *         within-party (un record confrontato con un altro della stessa
-	 *         party) e' ammessa in classificazione/GT/TP/FP. Con 2+ party il
-	 *         comportamento resta quello originale (solo coppie cross-party).
+	 * @return {@code true} se questa coppia va contata in TP/FP: sempre per
+	 *         una coppia cross-party, per una coppia within-party solo se la
+	 *         party dei due record (identica per costruzione all'interno di
+	 *         un match within-party) e' dichiarata {@code duplicateFree=false}
+	 *         — stessa regola per-party di {@link #countGroundTruthMatches}.
 	 */
-	private static boolean selfPairsAllowed(Map<Party, Collection<Record>> input) {
-		return input.size() == 1 && !input.keySet().iterator().next().isDuplicateFree();
-	}
-
-	/**
-	 * @return {@link ComparisonStrategy#SOURCE_INCONSISTENT} solo per una
-	 *         deduplicazione a sorgente singola (per un insieme di party di un
-	 *         solo elemento produce esattamente la coppia party-con-se-stessa,
-	 *         nessun'altra combinazione essendo possibile), altrimenti sempre
-	 *         {@link ComparisonStrategy#SOURCE_CONSISTENT} (comportamento
-	 *         originale, invariato per 2+ party).
-	 */
-	private static ComparisonStrategy comparisonStrategy(Map<Party, Collection<Record>> input) {
-		return input.keySet().size() == 1 ? ComparisonStrategy.SOURCE_INCONSISTENT : ComparisonStrategy.SOURCE_CONSISTENT;
+	static boolean countsForOutcome(LinkedPair<Record> pair) {
+		final Party leftParty = pair.getLeftRecord().getParty();
+		final Party rightParty = pair.getRight().getParty();
+		return !leftParty.getName().equals(rightParty.getName()) || !leftParty.isDuplicateFree();
 	}
 
 	/**
 	 * Conta le coppie di ground truth (stesso GLOBAL_ID), indipendentemente da
 	 * quali coppie il matcher abbia effettivamente trovato: serve come
 	 * denominatore della recall. Raggruppa tutti i record per GLOBAL_ID in un
-	 * solo passaggio, poi per ogni gruppo conta le coppie ammesse: tra party
-	 * distinte sempre (come in precedenza), all'interno della stessa party
-	 * solo per una deduplicazione a sorgente singola ({@link #selfPairsAllowed}).
+	 * solo passaggio, poi per ogni gruppo conta: le coppie cross-party tra
+	 * ogni coppia di party distinte presenti nel gruppo (sempre), e — per
+	 * ciascuna party del gruppo con {@code duplicateFree=false} — anche le
+	 * combinazioni within-party di quella party. Generalizza al caso misto
+	 * (N>=2 party, un sottoinsieme qualunque dirty): per N==1 (sempre dirty,
+	 * la config loader rifiuta un'unica party clean) o per N>=2 tutte clean
+	 * produce esattamente lo stesso risultato della vecchia formula a due rami.
 	 */
-	private static long countGroundTruthMatches(Map<Party, Collection<Record>> input) {
-		final boolean selfPairsAllowed = selfPairsAllowed(input);
-
+	static long countGroundTruthMatches(Map<Party, Collection<Record>> input) {
 		final Map<String, List<Record>> byGlobalId = input.values().stream().flatMap(Collection::stream)
 				.collect(Collectors.groupingBy(Record::getGlobalId));
 
@@ -569,17 +558,17 @@ public class MultiSourceLinkage {
 			if (group.size() < 2) {
 				continue;
 			}
-			if (selfPairsAllowed) {
-				// un solo party in input: ogni coppia nel gruppo e' within-party per definizione
-				total += (long) group.size() * (group.size() - 1) / 2;
-				continue;
-			}
 			final Map<Party, Long> countsByParty = group.stream()
 					.collect(Collectors.groupingBy(Record::getParty, Collectors.counting()));
-			final List<Long> counts = new ArrayList<>(countsByParty.values());
-			for (int i = 0; i < counts.size(); i++) {
-				for (int j = i + 1; j < counts.size(); j++) {
-					total += counts.get(i) * counts.get(j);
+			final List<Map.Entry<Party, Long>> entries = new ArrayList<>(countsByParty.entrySet());
+			for (int i = 0; i < entries.size(); i++) {
+				final Party partyI = entries.get(i).getKey();
+				final long countI = entries.get(i).getValue();
+				if (!partyI.isDuplicateFree()) {
+					total += countI * (countI - 1) / 2;
+				}
+				for (int j = i + 1; j < entries.size(); j++) {
+					total += countI * entries.get(j).getValue();
 				}
 			}
 		}
