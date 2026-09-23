@@ -73,6 +73,14 @@ public final class LinkageUnitConfigLoader {
 		final List<Party> parties = resolveParties(raw.getParties(), jsonPath);
 		final ClusteringMethod method = raw.getClusteringMethod();
 
+		if (parties.size() == 1 && parties.get(0).isDuplicateFree()) {
+			throw new LinkageUnitConfigException(
+					"un'unica sorgente 'duplicateFree=true' non ha nulla da deduplicare e nessuna seconda sorgente "
+							+ "con cui essere confrontata (il ground truth sarebbe sempre 0 e ogni record "
+							+ "resterebbe un cluster singleton) in " + jsonPath
+							+ ". Per la deduplicazione imposta 'duplicateFree: false'; per il linkage servono "
+							+ "almeno due party.");
+		}
 		if (method == ClusteringMethod.MSCD_AP && !LinkageUnitOrchestrator.anyPartyDuplicateFree(parties)) {
 			throw new LinkageUnitConfigException(
 					"'clusteringMethod' e' MSCD_AP ma nessuna party ha 'duplicateFree=true' in " + jsonPath);

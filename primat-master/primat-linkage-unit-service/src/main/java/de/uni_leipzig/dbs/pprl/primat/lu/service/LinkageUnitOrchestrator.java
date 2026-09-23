@@ -371,9 +371,10 @@ public class LinkageUnitOrchestrator {
 		System.out.printf("  Blocking:  coppie candidate %d | RR %.0f%% | PC %.0f%% | PQ %.0f%%%n",
 				blockingEval.getCandidatePairs(), blockingEval.getReductionRatio() * 100,
 				blockingEval.getPairsCompleteness() * 100, blockingEval.getPairsQuality() * 100);
-		System.out.printf("  Linkage:   TP %d | FP %d | GT %d | recall %.3f | precision %.3f | F1 %.3f%n",
-				outcome.getTruePositives(), outcome.getFalsePositives(), outcome.getTotalTrueMatches(),
-				outcome.getRecall(), outcome.getPrecision(), outcome.getFMeasure());
+		System.out.printf("  Linkage:   TP %d | FP %d | TN %d | FN %d | GT %d | recall %.3f | precision %.3f | F1 %.3f%n",
+				outcome.getTruePositives(), outcome.getFalsePositives(), outcome.getTrueNegatives(),
+				outcome.getFalseNegatives(), outcome.getTotalTrueMatches(), outcome.getRecall(),
+				outcome.getPrecision(), outcome.getFMeasure());
 		System.out.println("=====");
 	}
 

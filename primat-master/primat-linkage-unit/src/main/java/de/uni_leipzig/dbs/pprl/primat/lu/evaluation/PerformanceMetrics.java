@@ -70,8 +70,16 @@ public final class PerformanceMetrics {
 
 		for (final PartyPair partyPair : partyPairs) {
 			final int sizeA = input.get(partyPair.getLeftParty()).size();
-			final int sizeB = input.get(partyPair.getRightParty()).size();
-			result = result + (sizeA * sizeB);
+			if (partyPair.getLeftParty().equals(partyPair.getRightParty())) {
+				// coppie non ordinate di record distinti all'interno della stessa party
+				// (deduplicazione a sorgente singola): n*n conterebbe anche un record con
+				// se stesso e ogni coppia due volte.
+				result = result + (sizeA * (sizeA - 1) / 2);
+			}
+			else {
+				final int sizeB = input.get(partyPair.getRightParty()).size();
+				result = result + (sizeA * sizeB);
+			}
 		}
 
 		return result;
