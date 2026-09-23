@@ -71,6 +71,14 @@ public class XorFolder implements BloomFilterHardener {
 		return new XorBitSetAttribute(bf.cardinality(), hardBf.getBitVector());
 	}
 
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public int resultingLength(int inputLength) {
+		return inputLength >> n;
+	}
+
 	private BloomFilter foldXor(BloomFilter bf) {
 		final BitSet bitset = bf.getBitVector();
 		final int size = bf.getSize();

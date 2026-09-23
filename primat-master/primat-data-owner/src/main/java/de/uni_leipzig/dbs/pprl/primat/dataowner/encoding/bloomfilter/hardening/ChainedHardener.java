@@ -66,4 +66,16 @@ public class ChainedHardener implements BloomFilterHardener {
 		}
 		return steps.get(steps.size() - 1).harden(res);
 	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public int resultingLength(int inputLength) {
+		int length = inputLength;
+		for (final BloomFilterHardener step : steps) {
+			length = step.resultingLength(length);
+		}
+		return length;
+	}
 }

@@ -409,7 +409,9 @@ public final class DataOwnerConfigLoader {
 						+ " e' rischioso a livello di performance e puo' degradare eccessivamente i dati (perdita di informazione nell'RBF).");
 			}
 			System.out.println(
-					"ATTENZIONE: XOR-Folding attivo - ricordarsi di impostare correttamente la dimensione dell'RBF (rbfSize) nella configurazione della Linkage Unit.");
+					"ATTENZIONE: XOR-Folding attivo - impostare 'rbfSize' a " + (bfLength >> foldCount)
+							+ " (= " + bfLength + " >> " + foldCount
+							+ ") nella configurazione della Linkage Unit, cosi' il blocking (valueRange) e il controllo automatico a run-time corrispondono alla reale dimensione dell'RBF.");
 			return new XorFolder(foldCount);
 		}
 

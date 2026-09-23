@@ -86,7 +86,7 @@ public final class LinkageUnitConfigLoader {
 		}
 
 		final double similarityThreshold = resolveSimilarityThreshold(raw.getSimilarityThreshold(), jsonPath);
-		final int[] lsh = resolveLsh(raw.getBlocking(), jsonPath);
+		final int[] lsh = resolveLsh(raw.getBlocking(), raw.getRbfSize(), jsonPath);
 		final JaccardLshJsonConfig jaccardLsh = raw.getBlocking() != null ? raw.getBlocking().getJaccardLsh() : null;
 		final long lshSeed = jaccardLsh != null && jaccardLsh.getSeed() != null ? jaccardLsh.getSeed()
 				: DEFAULT_LSH_SEED;
@@ -190,14 +190,23 @@ public final class LinkageUnitConfigLoader {
 		return threshold;
 	}
 
-	/** @return {@code [keySize, keys, valueRange]}, gia' validati positivi. */
-	private static int[] resolveLsh(BlockingJsonConfig blocking, Path jsonPath) throws LinkageUnitConfigException {
+	/**
+	 * @return {@code [keySize, keys, valueRange]}, gia' validati positivi.
+	 *         {@code valueRange}, se omesso nel JSON, usa {@code rbfSize} come
+	 *         default (invece del fisso {@code DEFAULT_LSH_VALUE_RANGE}) quando
+	 *         dichiarato: e' cosi' che il blocking campiona davvero la dimensione
+	 *         reale dell'RBF (es. dimezzata da un hardening XOR-fold) invece di
+	 *         restare sempre a 1024 a prescindere da cosa produce il Data Owner.
+	 */
+	private static int[] resolveLsh(BlockingJsonConfig blocking, Integer rbfSize, Path jsonPath)
+			throws LinkageUnitConfigException {
 		final JaccardLshJsonConfig jaccardLsh = blocking != null ? blocking.getJaccardLsh() : null;
 		final int keySize = jaccardLsh != null && jaccardLsh.getKeySize() != null ? jaccardLsh.getKeySize()
 				: DEFAULT_LSH_KEY_SIZE;
 		final int keys = jaccardLsh != null && jaccardLsh.getKeys() != null ? jaccardLsh.getKeys() : DEFAULT_LSH_KEYS;
+		final int valueRangeDefault = rbfSize != null ? rbfSize : DEFAULT_LSH_VALUE_RANGE;
 		final int valueRange = jaccardLsh != null && jaccardLsh.getValueRange() != null ? jaccardLsh.getValueRange()
-				: DEFAULT_LSH_VALUE_RANGE;
+				: valueRangeDefault;
 		if (keySize <= 0 || keys <= 0 || valueRange <= 0) {
 			throw new LinkageUnitConfigException(
 					"'blocking.jaccardLsh.{keySize,keys,valueRange}' devono essere positivi in " + jsonPath);

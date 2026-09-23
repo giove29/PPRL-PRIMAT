@@ -32,6 +32,7 @@ import javax.persistence.TypedQuery;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Cluster;
 import de.uni_leipzig.dbs.pprl.primat.common.model.ClusterFactory;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Party;
+import de.uni_leipzig.dbs.pprl.primat.common.model.PartyEncodingState;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.BlockingKeyAttribute;
 import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.IdAttribute;
@@ -100,6 +101,93 @@ public class DbConnection {
 		entityManager.getTransaction().commit();
 
 		return parties;
+	}
+
+	/**
+	 * Istantanea dell'encoding di un party per questo run, cosi' come
+	 * ricevuta dal suo Data Owner: la lunghezza in chiaro dell'RBF (non
+	 * sensibile) e il digest non reversibile dell'intera configurazione
+	 * (vedi {@code DataOwnerConfig#computeConfigHash()}).
+	 */
+	public static final class EncodingSnapshot {
+
+		private final int bitLength;
+		private final String configHash;
+
+		public EncodingSnapshot(int bitLength, String configHash) {
+			this.bitLength = bitLength;
+			this.configHash = configHash;
+		}
+
+		public int getBitLength() {
+			return bitLength;
+		}
+
+		public String getConfigHash() {
+			return configHash;
+		}
+	}
+
+	/**
+	 * Verifica, per ogni party, che la configurazione di encoding di questo
+	 * run coincida con quella salvata da un run precedente su questo stesso DB
+	 * (prima riga vista per quel party -> viene semplicemente registrata). Va
+	 * chiamata prima di decodificare gli RBF in {@code Record} e prima di
+	 * qualunque {@code persistNewClusters}/{@code getCandidateClusters}: una
+	 * configurazione cambiata altera le blocking key JaccardLSH derivate
+	 * dall'RBF, rompendo silenziosamente il riconoscimento "stesso record
+	 * fisico gia' visto" su cui si basa la persistenza incrementale (un
+	 * record noto verrebbe trattato come nuovo, con conseguente duplicate-key
+	 * sul suo id deterministico oppure, se l'id non collide, un cluster
+	 * duplicato silenzioso per la stessa persona reale).
+	 *
+	 * <p>Confronto decisivo su {@code configHash} (cattura qualunque cambio,
+	 * inclusi salt/hashFunctions/CWE che lascino invariata la lunghezza
+	 * dell'RBF — limite che il solo confronto sulla lunghezza non copriva):
+	 * il digest e' un valore non reversibile, mai la configurazione in
+	 * chiaro, coerente con la minimizzazione dei dati verso la LU in un
+	 * sistema PPRL. {@code bitLength} resta comunque salvato e confrontato
+	 * solo per arricchire il messaggio d'errore (permette di dire se e' anche
+	 * la dimensione dell'RBF a essere cambiata, senza rivelare altro).
+	 *
+	 * @throws IllegalStateException se la configurazione di encoding di un
+	 *                                party e' cambiata rispetto a quanto
+	 *                                salvato in precedenza
+	 */
+	public void checkEncodingState(Map<String, EncodingSnapshot> snapshotsByParty) {
+		final EntityManager entityManager = openEntityManager();
+		try {
+			entityManager.getTransaction().begin();
+
+			for (final Map.Entry<String, EncodingSnapshot> entry : snapshotsByParty.entrySet()) {
+				final String party = entry.getKey();
+				final EncodingSnapshot current = entry.getValue();
+				final PartyEncodingState existing = entityManager.find(PartyEncodingState.class, party);
+
+				if (existing == null) {
+					entityManager.persist(
+							new PartyEncodingState(party, current.getBitLength(), current.getConfigHash()));
+				}
+				else if (!existing.getConfigHash().equals(current.getConfigHash())) {
+					entityManager.getTransaction().rollback();
+					final String dimensionNote = existing.getBitLength() != current.getBitLength()
+							? "anche la dimensione dell'RBF e' cambiata: " + existing.getBitLength() + " -> "
+									+ current.getBitLength() + " bit."
+							: "la dimensione dell'RBF e' invariata (" + current.getBitLength()
+									+ " bit): controlla salt/hashFunctions/CWE lato Data Owner.";
+					throw new IllegalStateException("La configurazione di encoding del party '" + party
+							+ "' e' cambiata rispetto a un run precedente su questo DB: le blocking key derivate "
+							+ "non sarebbero piu' comparabili con lo storico persistito. " + dimensionNote
+							+ "\nSvuota il DB (db_reset_scripts/reset_db.py) oppure ripristina la configurazione "
+							+ "originale di questo party prima di continuare.");
+				}
+			}
+
+			entityManager.getTransaction().commit();
+		}
+		finally {
+			entityManager.close();
+		}
 	}
 
 	public void addParties(Set<Party> parties) {

@@ -16,6 +16,8 @@ party (1) ──< record (N) >── (1) cluster
                 └──< qidattribute│   └── physrep ──> record│
                                  │                          │
                                  └──> blockingkeyattribute <┘
+
+partyencodingstate  (tabella indipendente, PK = party, nessuna FK)
 ```
 
 - Un `party` ha molti `record`.
@@ -100,6 +102,22 @@ Tabella ponte (many-to-many `record` ↔ `blockingkeyattribute`, nessuna entity 
 Stessa struttura di `block`, ma per `cluster` invece di `record`. Una riga = "questo cluster (entità nota) cade in questo bucket di blocking" — usata da `DbConnection.getCandidateClusters(...)` (join nativo `clusterBlock ↔ BlockStaging`) per bloccare i cluster storici contro i soli record nuovi di un run, invece di ricaricare e riblockare l'intero storico (vedi `ARCHITECTURE_FLOW.md`).
 
 Popolata esplicitamente da `DbConnection.syncClusterBlockingKeys(cluster)` (metodo privato, chiamato prima del `persist`/`merge` finale in `persistNewCluster`/`extendCluster`/`mergeClusters`), che ricalcola l'unione delle blocking key di tutti i record del cluster — **non** da `Cluster.addRecord(Record)` (codice framework non toccato): quel metodo popola `cluster.blockingKeys` solo quando il record passato era già presente nell'insieme, condizione che nel flusso normale (record nuovo e distinto) non si verifica mai. Conseguenza pratica: i cluster persistiti prima di questa modifica hanno `clusterBlock` vuota e non emergeranno come candidati finché non vengono ri-persistiti da zero (nessuna migrazione prevista, vedi `TESTING.md`).
+
+## `partyencodingstate` (2026-09-23)
+
+Entity `PartyEncodingState` (`primat-common/.../model/`). Nessuna relazione con le altre tabelle (nessuna FK dichiarata, anche se `party` coincide logicamente con `party.name`). Una riga = "con quale configurazione di encoding questo party ha persistito i suoi dati su **questo specifico DB**" — una riga per party, non per run.
+
+| Colonna | Tipo | Significato |
+|---|---|---|
+| `party` (**PK**) | varchar | nome del party, stesso valore di `party.name` |
+| `bitlength` | int | lunghezza effettiva dell'RBF dopo l'hardening, calcolata con certezza da `DataOwnerConfig.computeEffectiveRbfBitLength()` (es. dimezzata da un `XorFolder`). Solo informativo/diagnostico qui — non è la base del confronto, vedi sotto |
+| `confighash` | varchar(100) | digest **non reversibile** (HMAC-SHA384 in Base64, `DeterministicHashing.digestBase64(...)`) dell'intera configurazione di encoding del party — lunghezza RBF, hardening, missing-value handling, e per ogni colonna QID dataType/hashFunctions/salt/CWE/missingValueTokenCount. Il testo che genera il digest non lascia mai il Data Owner: solo il digest viaggia fino a qui |
+
+**Perché un digest e non una descrizione o solo la lunghezza**: la Linkage Unit non deve mai ricevere salt/hashFunctions/CWE o altri dettagli implementativi della codifica del Data Owner (principio di minimizzazione dei dati in un sistema PPRL — un tentativo precedente che trasmetteva una stringa descrittiva è stato scartato per questo). Ma confrontare solo la lunghezza dell'RBF (un tentativo intermedio, anch'esso scartato) non rileva un cambio di salt/hashFunctions/CWE che lasci invariata la lunghezza — le blocking key cambierebbero comunque, con lo stesso rischio di corruzione. Un digest cattura qualunque cambiamento nella configurazione, qualunque esso sia, senza mai rivelarne il contenuto.
+
+Scritta/verificata da `DbConnection.checkEncodingState(Map<String, DbConnection.EncodingSnapshot>)`, chiamata da `LinkageUnitOrchestrator.collectRbf(...)` **prima** di decodificare gli RBF ricevuti in `Record` e prima di qualunque `persistNewClusters`/`getCandidateClusters`: se un party non ha ancora una riga qui, viene creata al volo (prima persistenza su questo DB); se ce l'ha già e `confighash` del run corrente è diverso, la transazione viene fatta rollback e il run abortisce con un `IllegalStateException` leggibile — arricchito con `bitlength` solo per dire se *anche* la dimensione dell'RBF è cambiata, o se è rimasta invariata (quindi il responsabile è un altro parametro) — **senza toccare `record`/`cluster`/`block`/`clusterBlock`**.
+
+Serve a prevenire un problema reale: `record`/`cluster` sono riconciliati tra run in base all'overlap delle blocking key JaccardLSH derivate dall'RBF (vedi sopra); se la configurazione di encoding di un party cambia tra un run e l'altro (es. si attiva l'XOR-folding, oppure cambia solo un salt) **senza svuotare il DB**, le blocking key del record cambiano, la LU non riconosce più un record già noto come tale, e il tentativo di re-inserirlo con lo stesso `record.id` deterministico produce un `duplicate key value violates unique constraint "record_pkey"` — oppure, nei casi che non collidono su un id esistente, un secondo cluster duplicato silenzioso per la stessa persona reale, senza alcun errore. Questa tabella intercetta il cambio **prima** che uno dei due scenari possa verificarsi, qualunque sia il parametro cambiato.
 
 ## Query di verifica utili
 

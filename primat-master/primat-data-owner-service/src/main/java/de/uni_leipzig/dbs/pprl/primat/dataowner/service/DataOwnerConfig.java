@@ -6,6 +6,7 @@ package de.uni_leipzig.dbs.pprl.primat.dataowner.service;
 
 import java.util.List;
 
+import de.uni_leipzig.dbs.pprl.primat.common.utils.DeterministicHashing;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hardening.BloomFilterHardener;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.ColumnConfig;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.ColumnRole;
@@ -133,6 +134,68 @@ public class DataOwnerConfig {
 	/** @return la tecnica di hardening da applicare all'RBF dopo la codifica ({@code NoHardener} se nessuna). */
 	public BloomFilterHardener getHardener() {
 		return hardener;
+	}
+
+	/**
+	 * @return la dimensione reale, in bit, dell'RBF dopo l'hardening (es. dimezzata
+	 *         rispetto a {@link #getBloomFilterLength()} se {@code hardener} è uno
+	 *         {@code XorFolder}) — il valore dichiarato con certezza dalla
+	 *         configurazione stessa, non dedotto a posteriori dal contenuto di un
+	 *         bitset ricevuto (che può sottostimarlo se i byte finali sono a zero).
+	 *         Trasmesso alla Linkage Unit in {@code RbfPayload.effectiveRbfBitLength}
+	 *         in chiaro (un intero non e' un dato sensibile), usato per la
+	 *         guardia sulla coerenza con rbfSize/valueRange (vedi
+	 *         {@code LinkageUnitOrchestrator.collectRbf}) — per il confronto
+	 *         piu' severo prima di ogni persistenza, che copre anche cambi di
+	 *         salt/hashFunctions/CWE, vedi {@link #computeConfigHash()}.
+	 */
+	public int computeEffectiveRbfBitLength() {
+		return hardener.resultingLength(bloomFilterLength);
+	}
+
+	/**
+	 * @return un digest deterministico (non reversibile, vedi
+	 *         {@link DeterministicHashing#digestBase64(String)}) dell'intera
+	 *         configurazione di encoding di questo party: lunghezza RBF,
+	 *         hardening, missing-value handling, e per ogni colonna QID
+	 *         dataType/hashFunctions/salt/CWE/missingValueTokenCount. La
+	 *         stringa in chiaro che genera il digest non lascia mai questo
+	 *         metodo: solo il suo hash viene trasmesso alla Linkage Unit
+	 *         ({@code RbfPayload.configHash}), che puo' cosi' verificare se
+	 *         la configurazione di un party e' cambiata rispetto a un run
+	 *         precedente sullo stesso DB persistente
+	 *         ({@code DbConnection.checkEncodingState}) senza mai vedere
+	 *         salt/hashFunctions/CWE: coerente con il principio di
+	 *         minimizzazione dei dati verso la Linkage Unit in un sistema PPRL.
+	 */
+	public String computeConfigHash() {
+		final StringBuilder sb = new StringBuilder();
+		sb.append("rbfLength=").append(bloomFilterLength);
+		sb.append(";hardening=").append(String.join(">", hardeningDescriptions));
+		sb.append(";missingValueHandling=").append(missingValueHandlingEnabled);
+		if (missingValueHandlingEnabled) {
+			sb.append("(anchorPriority=").append(missingValueAnchorPriority).append(')');
+		}
+		for (final ColumnConfig column : columns) {
+			if (column.getRole() != ColumnRole.QID) {
+				continue;
+			}
+			sb.append(";col=").append(column.getName())
+					.append(",dataType=").append(column.getDataType())
+					.append(",hashFunctions=").append(column.getHashFunctionsOrDefault())
+					.append(",salt=").append(column.getSaltOrDefault())
+					.append(",cwe=");
+			if (column.isConstantWeightEncodingEnabled()) {
+				sb.append("On(minTrigrams=").append(column.getConstantWeightEncoding().getMinTrigrams())
+						.append(",maxTrigrams=").append(column.getConstantWeightEncoding().getMaxTrigrams())
+						.append(')');
+			}
+			else {
+				sb.append("Off");
+			}
+			sb.append(",missingValueTokenCount=").append(column.getMissingValueTokenCountOrDefault());
+		}
+		return DeterministicHashing.digestBase64(sb.toString());
 	}
 
 	/** @return {@code true} se la pipeline deve stampare a schermo i primi 2 record ad ogni passo di preprocessing. */

@@ -278,6 +278,53 @@ public class LinkageUnitOrchestrator {
 					+ receivedByParty.keySet());
 		}
 
+		// Dimensione effettiva dell'RBF di ogni party, dichiarata con certezza dal
+		// suo Data Owner (DataOwnerConfig.computeEffectiveRbfBitLength()) — non
+		// dedotta dal contenuto di un bitset ricevuto, che puo' sottostimarla se i
+		// byte finali sono a zero. Usata dalla guardia rbfSize/valueRange sotto e,
+		// insieme a configHash, dalla guardia di persistenza piu' sotto.
+		final Map<String, Integer> effectiveBitLengthByParty = new HashMap<>();
+		for (final Party party : parties) {
+			effectiveBitLengthByParty.put(party.getName(), receivedByParty.get(party.getName()).getEffectiveRbfBitLength());
+		}
+
+		// Guardia sulla dimensione dell'RBF: confronta l'rbfSize dichiarato nel
+		// JSON della LU con la dimensione effettiva di ogni party. Solo un
+		// warning: un mismatch qui non impedisce il run, ma segnala che il
+		// blocking (valueRange, che di default eredita proprio rbfSize) potrebbe
+		// non corrispondere ai dati reali. Gira sempre, indipendentemente dalla
+		// persistenza (a differenza della guardia sotto).
+		if (config.getRbfSize() != null) {
+			for (final Map.Entry<String, Integer> entry : effectiveBitLengthByParty.entrySet()) {
+				if (!entry.getValue().equals(config.getRbfSize())) {
+					System.out.println("WARN  [" + entry.getKey() + "] rbfSize dichiarato (" + config.getRbfSize()
+							+ " bit) diverso dall'RBF effettivo ricevuto (" + entry.getValue()
+							+ " bit) - il blocking (valueRange=" + config.getLshValueRange()
+							+ ") potrebbe non corrispondere alla reale dimensione dell'RBF.");
+				}
+			}
+		}
+
+		// Guardia sulla persistenza, prima di decodificare qualunque RBF in Record
+		// e prima di qualunque persistNewClusters/getCandidateClusters: una
+		// configurazione di encoding cambiata tra un run e l'altro (es. hardening
+		// XOR-fold, ma anche solo un salt/hashFunctions/CWE) altera le blocking
+		// key derivate dall'RBF, rompendo silenziosamente il riconoscimento
+		// "stesso record fisico gia' visto" su cui si basa la persistenza
+		// incrementale. Confronto su configHash (digest non reversibile, mai la
+		// configurazione in chiaro): copre anche i cambi che non toccano la sola
+		// dimensione dell'RBF. Nessun effetto per i run non persistenti (CSV).
+		if (config.isPersistenceEnabled()) {
+			final Map<String, DbConnection.EncodingSnapshot> snapshotsByParty = new HashMap<>();
+			for (final Party party : parties) {
+				final RbfPayload payload = receivedByParty.get(party.getName());
+				snapshotsByParty.put(party.getName(),
+						new DbConnection.EncodingSnapshot(effectiveBitLengthByParty.get(party.getName()),
+								payload.getConfigHash()));
+			}
+			config.getDbConnection().checkEncodingState(snapshotsByParty);
+		}
+
 		final Map<Party, Collection<Record>> input = new HashMap<>();
 		for (final Party party : parties) {
 			final RbfPayload payload = receivedByParty.get(party.getName());

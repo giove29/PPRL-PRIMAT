@@ -7,10 +7,12 @@
   ],
   "clusteringMethod": "MCL",
   "similarityThreshold": 0.75,
+  "rbfSize": 1024,
   "blocking": {
     "jaccardLsh": {
       "keySize": 8,
-      "keys": 20
+      "keys": 20,
+      "valueRange": 1024
     }
   },
   "persistence": {

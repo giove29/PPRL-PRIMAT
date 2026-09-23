@@ -10,21 +10,30 @@ import java.util.List;
  * DTO di wire-format (serializzato via Gson) pubblicato da un Data Owner sul
  * proprio topic RBF. Contiene, per ogni record locale, il solo Bloom Filter
  * record-level (RBF) già codificato: i dati in chiaro non vengono mai
- * inclusi. Disaccoppiato dal modello di dominio {@code Record}.
+ * inclusi, e lo stesso vale per la configurazione di encoding — la LU riceve
+ * solo {@link #getEffectiveRbfBitLength()} (un intero) e
+ * {@link #getConfigHash()} (un digest non reversibile), mai una descrizione
+ * di salt/hashFunctions/hardening/CWE. Disaccoppiato dal modello di dominio
+ * {@code Record}.
  */
 public class RbfPayload {
 
 	private String runId;
 	private String party;
 	private List<RbfRecord> records;
+	private int effectiveRbfBitLength;
+	private String configHash;
 
 	public RbfPayload() {
 	}
 
-	public RbfPayload(String runId, String party, List<RbfRecord> records) {
+	public RbfPayload(String runId, String party, List<RbfRecord> records, int effectiveRbfBitLength,
+			String configHash) {
 		this.runId = runId;
 		this.party = party;
 		this.records = records;
+		this.effectiveRbfBitLength = effectiveRbfBitLength;
+		this.configHash = configHash;
 	}
 
 	public String getRunId() {
@@ -49,6 +58,39 @@ public class RbfPayload {
 
 	public void setRecords(List<RbfRecord> records) {
 		this.records = records;
+	}
+
+	/**
+	 * @return la dimensione reale, in bit, dell'RBF di questo party dopo
+	 *         l'hardening (es. {@code DataOwnerConfig#computeEffectiveRbfBitLength()}),
+	 *         dichiarata con certezza dalla configurazione — non dedotta dal
+	 *         contenuto dei bitset ricevuti. Deliberatamente l'unico dato sulla
+	 *         codifica trasmesso dal Data Owner: in un sistema PPRL la Linkage
+	 *         Unit non deve mai ricevere salt/hashFunctions/CWE o altri dettagli
+	 *         implementativi della codifica.
+	 */
+	public int getEffectiveRbfBitLength() {
+		return effectiveRbfBitLength;
+	}
+
+	public void setEffectiveRbfBitLength(int effectiveRbfBitLength) {
+		this.effectiveRbfBitLength = effectiveRbfBitLength;
+	}
+
+	/**
+	 * @return digest deterministico e non reversibile (vedi
+	 *         {@code DataOwnerConfig#computeConfigHash()}) dell'intera
+	 *         configurazione di encoding di questo party. Permette alla
+	 *         Linkage Unit di verificare se la configurazione e' cambiata
+	 *         rispetto a un run precedente sullo stesso DB persistente senza
+	 *         mai vedere salt/hashFunctions/CWE.
+	 */
+	public String getConfigHash() {
+		return configHash;
+	}
+
+	public void setConfigHash(String configHash) {
+		this.configHash = configHash;
 	}
 
 	/**

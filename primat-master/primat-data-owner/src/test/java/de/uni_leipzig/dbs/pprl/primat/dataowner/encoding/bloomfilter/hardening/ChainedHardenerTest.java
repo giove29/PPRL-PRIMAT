@@ -77,6 +77,16 @@ class ChainedHardenerTest {
 	}
 
 	@Test
+	void resultingLengthComposesEachStepInOrder() {
+		// BLIP non cambia la lunghezza (identita', default dell'interfaccia);
+		// solo i due XorFolder la dimezzano, in sequenza: 256 -> 128 -> 64.
+		final ChainedHardener chained = new ChainedHardener(
+				List.of(new RandomizedResponse(0.2, 3L), new XorFolder(1), new XorFolder(1)));
+
+		assertEquals(64, chained.resultingLength(SIZE));
+	}
+
+	@Test
 	void singleStepChainBehavesLikeThatStepAlone() {
 		final BitSet initial = new BitSet(SIZE);
 		initial.set(5);

@@ -41,10 +41,25 @@ public interface BloomFilterHardener {
 
 	/**
 	 * Apply a hardening function and return the hardened Bloom filter.
-	 * 
+	 *
 	 * @param  bf the input Bloom filter to harden.
 	 * @return    the hardened output Bloom filter.
 	 */
 	public BloomFilter hardenBloomFilter(BloomFilter bf);
+
+	/**
+	 * Declares, without needing an actual {@link BloomFilter} instance, how many
+	 * bits a filter of {@code inputLength} bits will have after this hardener is
+	 * applied. Default is the identity (length unchanged), correct for any
+	 * hardener that only flips/perturbs bits rather than resizing the filter
+	 * (e.g. {@link NoHardener}, {@link RandomizedResponse}/BLIP); a hardener that
+	 * changes the length (e.g. {@link XorFolder}) must override this.
+	 *
+	 * @param  inputLength length in bits of the filter before this hardener.
+	 * @return             length in bits of the filter after this hardener.
+	 */
+	public default int resultingLength(int inputLength) {
+		return inputLength;
+	}
 
 }

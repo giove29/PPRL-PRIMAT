@@ -100,6 +100,38 @@ class LinkageUnitConfigLoaderTest {
 	}
 
 	@Test
+	void valueRangeDefaultsToRbfSizeWhenOmitted() throws Exception {
+		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\" } ],"
+				+ " \"clusteringMethod\": \"MCL\", \"rbfSize\": 512 }";
+		final Path path = writeJson("value-range-from-rbfsize.json", json);
+
+		final LinkageUnitConfig config = LinkageUnitConfigLoader.load(path);
+
+		assertEquals(512, config.getLshValueRange());
+	}
+
+	@Test
+	void explicitValueRangeOverridesRbfSize() throws Exception {
+		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\" } ],"
+				+ " \"clusteringMethod\": \"MCL\", \"rbfSize\": 512,"
+				+ " \"blocking\": { \"jaccardLsh\": { \"valueRange\": 2048 } } }";
+		final Path path = writeJson("value-range-explicit-override.json", json);
+
+		final LinkageUnitConfig config = LinkageUnitConfigLoader.load(path);
+
+		assertEquals(2048, config.getLshValueRange());
+	}
+
+	@Test
+	void valueRangeDefaultsTo1024WhenNeitherRbfSizeNorValueRangeDeclared() throws Exception {
+		final Path path = writeJson("value-range-no-rbfsize.json", MINIMAL_MCL_JSON);
+
+		final LinkageUnitConfig config = LinkageUnitConfigLoader.load(path);
+
+		assertEquals(1024, config.getLshValueRange());
+	}
+
+	@Test
 	void missingFileThrowsConfigException() throws IOException {
 		final Path missing = Files.createTempDirectory("lu-config-test").resolve("does-not-exist.json");
 

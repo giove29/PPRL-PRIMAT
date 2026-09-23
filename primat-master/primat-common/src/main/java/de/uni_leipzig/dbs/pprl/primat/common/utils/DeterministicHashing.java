@@ -4,6 +4,8 @@
  */
 package de.uni_leipzig.dbs.pprl.primat.common.utils;
 
+import java.util.Base64;
+
 /**
  * Utility di hashing deterministico condivisa da
  * {@code ConstantWeightTrigramExtractor} (hash-ranking dei trigrammi in
@@ -29,5 +31,19 @@ public final class DeterministicHashing {
 
 	public static int toBucket(String input, int modulus) {
 		return toPositiveInt(input) % modulus;
+	}
+
+	/**
+	 * @param  input stringa qualunque da cui derivare un digest deterministico.
+	 * @return       il digest HMAC-SHA384 di {@code input}, codificato in
+	 *                Base64 (stesso stile di codifica gia' usato da
+	 *                {@code RbfCodec} per i bitset) — un identificativo
+	 *                opaco e non reversibile, utile per verificare
+	 *                l'uguaglianza tra due configurazioni senza mai
+	 *                trasmetterle in chiaro.
+	 */
+	public static String digestBase64(String input) {
+		final byte[] digest = HashUtils.getHmac(HMacAlgorithm.HMAC_SHA_384, input, DEFAULT_KEY);
+		return Base64.getEncoder().encodeToString(digest);
 	}
 }

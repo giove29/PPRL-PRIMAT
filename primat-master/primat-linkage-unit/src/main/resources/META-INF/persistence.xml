@@ -35,6 +35,7 @@
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Cluster</class>
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.CountingBloomFilter</class>
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Record</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.PartyEncodingState</class>
 
 		<properties>
 			<property name="javax.persistence.jdbc.driver" value="org.postgresql.Driver" />
@@ -72,6 +73,7 @@
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Cluster</class>
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.CountingBloomFilter</class>
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Record</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.PartyEncodingState</class>
 
 		<properties>
 			<property name="javax.persistence.jdbc.driver" value="org.postgresql.Driver" />
@@ -106,6 +108,7 @@
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Cluster</class>
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.CountingBloomFilter</class>
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Record</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.PartyEncodingState</class>
 
 		<properties>
 			<property name="javax.persistence.jdbc.driver" value="org.postgresql.Driver" />
@@ -140,6 +143,7 @@
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Cluster</class>
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.CountingBloomFilter</class>
 		<class>de.uni_leipzig.dbs.pprl.primat.common.model.Record</class>
+		<class>de.uni_leipzig.dbs.pprl.primat.common.model.PartyEncodingState</class>
 
 		<properties>
 			<property name="javax.persistence.jdbc.driver" value="org.postgresql.Driver" />

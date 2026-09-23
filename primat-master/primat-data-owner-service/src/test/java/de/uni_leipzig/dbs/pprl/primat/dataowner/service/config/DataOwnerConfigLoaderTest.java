@@ -72,6 +72,7 @@ class DataOwnerConfigLoaderTest {
 		assertEquals(1024, config.getBloomFilterLength());
 		assertEquals(5, config.getColumns().size());
 		assertTrue(config.getHardener() instanceof NoHardener);
+		assertEquals(1024, config.computeEffectiveRbfBitLength());
 	}
 
 	@Test
@@ -83,6 +84,10 @@ class DataOwnerConfigLoaderTest {
 		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
 
 		assertTrue(config.getHardener() instanceof XorFolder);
+		// bloomFilter.length=1024 dimezzato 2 volte dal foldCount: la dimensione
+		// effettiva trasmessa alla LU deve riflettere il post-hardening, non i
+		// 1024 bit originali.
+		assertEquals(256, config.computeEffectiveRbfBitLength());
 	}
 
 	@Test

@@ -109,7 +109,8 @@ public class DataOwnerService {
 					.map(RbfCodec::toRbfRecord)
 					.collect(Collectors.toList());
 
-			final RbfPayload payload = new RbfPayload(runId, config.getParty(), rbfRecords);
+			final RbfPayload payload = new RbfPayload(runId, config.getParty(), rbfRecords,
+					config.computeEffectiveRbfBitLength(), config.computeConfigHash());
 			client.publish(MqttTopics.rbfTopic(runId, config.getParty()), gson.toJson(payload));
 
 			client.publish(MqttTopics.statusTopic(runId, config.getParty()),
