@@ -278,6 +278,33 @@ public class LinkageUnitOrchestrator {
 					+ receivedByParty.keySet());
 		}
 
+		// Guardia di coerenza cross-party: a differenza delle due guardie sotto
+		// (che confrontano un singolo party con l'rbfSize della LU o con la sua
+		// storia su DB), questa verifica che TUTTE le sorgenti di questo run
+		// condividano esattamente la stessa configurazione di encoding tra loro
+		// (stesso configHash) — requisito indispensabile perche' le posizioni di
+		// bit dell'RBF siano comparabili tra party (stesso salt/hashFunctions per
+		// ogni colonna, vedi CLAUDE.md). Blocca l'intero run (mai un warning): un
+		// mismatch qui rende privo di senso qualunque confronto di similarita' a
+		// prescindere dalla persistenza — gira sempre, anche al primissimo run,
+		// prima che esista uno storico su DB con cui checkEncodingState potrebbe
+		// altrimenti confrontare.
+		final Map<String, List<String>> partiesByConfigHash = new HashMap<>();
+		for (final Party party : parties) {
+			final String hash = receivedByParty.get(party.getName()).getConfigHash();
+			partiesByConfigHash.computeIfAbsent(hash, h -> new ArrayList<>()).add(party.getName());
+		}
+		if (partiesByConfigHash.size() > 1) {
+			final StringBuilder detail = new StringBuilder();
+			for (final Map.Entry<String, List<String>> entry : partiesByConfigHash.entrySet()) {
+				detail.append("\n  hash ").append(entry.getKey()).append(" -> party ").append(entry.getValue());
+			}
+			throw new IllegalStateException("Le sorgenti di questo run non condividono la stessa configurazione di "
+					+ "encoding (salt/hashFunctions/hardening/CWE devono essere identici su tutte le party perche' "
+					+ "le posizioni di bit dell'RBF siano comparabili):" + detail
+					+ "\nAllinea le configurazioni JSON dei Data Owner coinvolti prima di continuare.");
+		}
+
 		// Dimensione effettiva dell'RBF di ogni party, dichiarata con certezza dal
 		// suo Data Owner (DataOwnerConfig.computeEffectiveRbfBitLength()) — non
 		// dedotta dal contenuto di un bitset ricevuto, che puo' sottostimarla se i
