@@ -57,7 +57,7 @@ Entity: `Cluster`. Id da sequence dedicata `cluster_seq` (allocationSize=50, dal
 | `physrep` (**FK** → `record.id`) | varchar, nullable | il "record fisico rappresentante" del cluster (tipicamente il primo record che ha originato il cluster) |
 | colonne di `cbf` (embedded `CountingBloomFilter`) | `INTEGER[]` (`virtrep`) + numerico | un Bloom filter di conteggio aggregato del cluster, aggiornato quando il cluster cresce — non usato dal path di persistenza attuale (`DbConnection`/`PersistentLinkTableBuilder` non lo popolano), resta a `null`/default |
 
-**Una riga in questa tabella non viene mai cancellata per "smontaggio"**: può solo apparire (nuova entità) o sparire per fusione dentro un'altra (`mergeClusters`, righe `record` ripuntate al target prima della cancellazione del loser) — mai divisa. Questa è la garanzia di stabilità descritta in `CONCEPTUAL_FLOW.md`.
+**Una riga in questa tabella non viene mai cancellata per "smontaggio"**: può solo apparire (nuova entità) o essere estesa con record nuovi — mai divisa né fusa da un run (dal 2026-09-24 `ClusterAssignmentPlanner` assegna ogni record fresco a un solo cluster e rispetta il vincolo clean-source; `DbConnection.mergeClusters` resta nel codice ma non è più chiamato). Questa è la garanzia di stabilità descritta in `CONCEPTUAL_FLOW.md`.
 
 ## `qidattribute`
 

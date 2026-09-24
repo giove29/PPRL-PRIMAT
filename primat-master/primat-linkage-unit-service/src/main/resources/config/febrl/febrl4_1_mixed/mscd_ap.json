@@ -5,7 +5,7 @@
     { "name": "org1", "duplicateFree": false }
   ],
   "clusteringMethod": "MSCD_AP",
-  "similarityThreshold": 0.75,
+  "similarityThreshold": 0.6,
   "rbfSize": 1024,
   "blocking": {
     "jaccardLsh": {

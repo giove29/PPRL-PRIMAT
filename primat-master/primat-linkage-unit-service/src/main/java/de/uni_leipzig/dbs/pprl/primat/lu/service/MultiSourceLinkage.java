@@ -248,14 +248,41 @@ public class MultiSourceLinkage {
 		final MultipartiteClusteringStrategy clusterer = new AffinityPropagationPostprocessor<>(-0.1, -0.5,
 				apConfig.getDampingFactor(), apConfig);
 		final List<LinkedPair<Record>> matches = classifyAndCluster(input, blocker, clusterer, threshold);
+		return finish(input, matches, clusterFactory, dbConnection);
+	}
 
+	/**
+	 * Chiude la Link Table del run: persistente (assegnazione dei record freschi
+	 * ai cluster storici, vedi {@link ClusterAssignmentPlanner}) se
+	 * {@code dbConnection != null}, altrimenti in memoria.
+	 */
+	private LinkageOutcome finish(Map<Party, Collection<Record>> input, List<LinkedPair<Record>> matches,
+			ClusterFactory clusterFactory, DbConnection dbConnection) {
 		final Collection<Record> allRecords = input.values().stream().flatMap(Collection::stream)
 				.collect(Collectors.toList());
-		final Set<Cluster> linkTable = dbConnection != null
-				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection, persistenceProgress)
-				: LinkTableBuilder.build(matches, allRecords);
+		if (dbConnection == null) {
+			return buildOutcome(input, matches, LinkTableBuilder.build(matches, allRecords));
+		}
+		final Set<Cluster> linkTable = PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory,
+				dbConnection, persistenceProgress);
+		return buildOutcome(input, keepPairsWithinFinalClusters(matches), linkTable);
+	}
 
-		return buildOutcome(input, matches, linkTable);
+	/**
+	 * Nel path persistente il risultato salvato può differire dall'output del
+	 * clustering (un record ambiguo entra in un solo cluster storico, i link
+	 * storico-storico non fondono nulla, il vincolo clean-source scarta
+	 * candidati): TP/FP vanno contati solo sulle coppie i cui due record sono
+	 * davvero finiti nello stesso cluster. Senza storico ogni coppia dei
+	 * {@code matches} sta nello stesso cluster, quindi il filtro non toglie nulla.
+	 * Un record senza cluster assegnato (non atteso) lascia la coppia intatta.
+	 */
+	static List<LinkedPair<Record>> keepPairsWithinFinalClusters(List<LinkedPair<Record>> matches) {
+		return matches.stream().filter(pair -> {
+			final Cluster left = pair.getLeftRecord().getCluster();
+			final Cluster right = pair.getRight().getCluster();
+			return left == null || right == null || left.getId() == right.getId();
+		}).collect(Collectors.toList());
 	}
 
 	/**
@@ -281,14 +308,7 @@ public class MultiSourceLinkage {
 		requireSourceDirtiness(input, "CENTER_CLUSTERING", false);
 		final MultipartiteClusteringStrategy clusterer = new CenterClusteringPostprocessor(centerClusteringConfig);
 		final List<LinkedPair<Record>> matches = classifyAndCluster(input, blocker, clusterer, threshold);
-
-		final Collection<Record> allRecords = input.values().stream().flatMap(Collection::stream)
-				.collect(Collectors.toList());
-		final Set<Cluster> linkTable = dbConnection != null
-				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection, persistenceProgress)
-				: LinkTableBuilder.build(matches, allRecords);
-
-		return buildOutcome(input, matches, linkTable);
+		return finish(input, matches, clusterFactory, dbConnection);
 	}
 
 	/**
@@ -316,14 +336,7 @@ public class MultiSourceLinkage {
 		requireSourceDirtiness(input, "GLOBAL_GREEDY", true);
 		final MultipartiteClusteringStrategy clusterer = new GlobalGreedyClusteringPostprocessor(globalGreedyConfig);
 		final List<LinkedPair<Record>> matches = classifyAndCluster(input, blocker, clusterer, threshold);
-
-		final Collection<Record> allRecords = input.values().stream().flatMap(Collection::stream)
-				.collect(Collectors.toList());
-		final Set<Cluster> linkTable = dbConnection != null
-				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection, persistenceProgress)
-				: LinkTableBuilder.build(matches, allRecords);
-
-		return buildOutcome(input, matches, linkTable);
+		return finish(input, matches, clusterFactory, dbConnection);
 	}
 
 	/**
@@ -350,14 +363,7 @@ public class MultiSourceLinkage {
 		requireSourceDirtiness(input, "CLIP", true);
 		final MultipartiteClusteringStrategy clusterer = new ClipClusteringPostprocessor(clipConfig);
 		final List<LinkedPair<Record>> matches = classifyAndCluster(input, blocker, clusterer, threshold);
-
-		final Collection<Record> allRecords = input.values().stream().flatMap(Collection::stream)
-				.collect(Collectors.toList());
-		final Set<Cluster> linkTable = dbConnection != null
-				? PersistentLinkTableBuilder.build(matches, allRecords, clusterFactory, dbConnection, persistenceProgress)
-				: LinkTableBuilder.build(matches, allRecords);
-
-		return buildOutcome(input, matches, linkTable);
+		return finish(input, matches, clusterFactory, dbConnection);
 	}
 
 	/**
