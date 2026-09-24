@@ -39,7 +39,7 @@ class LinkageUnitConfigLoaderTest {
 			+ "}";
 
 	private static final String FULL_CENTER_CLUSTERING_JSON = "{"
-			+ "\"mqttBrokerUrl\": \"tcp://localhost:1884\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": true }, { \"name\": \"B\", \"duplicateFree\": false } ],"
+			+ "\"mqttBrokerUrl\": \"tcp://localhost:1884\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": false }, { \"name\": \"B\", \"duplicateFree\": false } ],"
 			+ "\"clusteringMethod\": \"CENTER_CLUSTERING\","
 			+ "\"similarityThreshold\": 0.75,"
 			+ "\"blocking\": { \"jaccardLsh\": { \"keySize\": 5, \"keys\": 20, \"valueRange\": 2048, \"seed\": 7 } },"
@@ -237,6 +237,41 @@ class LinkageUnitConfigLoaderTest {
 		assertEquals(ClusteringMethod.CLIP, config.getClusteringMethod());
 		assertEquals(0.5, config.getClipConfig().getWeightSimilarity(), 1e-9);
 		assertTrue(config.getClipConfig().isIgnoreWeakLinks());
+	}
+
+	@Test
+	void rejectsMclWithAnyCleanParty() throws Exception {
+		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": false },"
+				+ " { \"name\": \"B\", \"duplicateFree\": true } ], \"clusteringMethod\": \"MCL\" }";
+		final Path path = writeJson("mcl-clean.json", json);
+
+		final LinkageUnitConfigException e = assertThrows(LinkageUnitConfigException.class,
+				() -> LinkageUnitConfigLoader.load(path));
+		assertTrue(e.getMessage().contains("MCL"));
+		assertTrue(e.getMessage().contains("dirty"));
+	}
+
+	@Test
+	void rejectsCenterClusteringWithAnyCleanParty() throws Exception {
+		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": true },"
+				+ " { \"name\": \"B\", \"duplicateFree\": false } ], \"clusteringMethod\": \"CENTER_CLUSTERING\","
+				+ " \"database\": { \"url\": \"jdbc:postgresql://localhost:5432/primat_center_clustering\", \"user\": \"primat\", \"password\": \"primat\" } }";
+		final Path path = writeJson("center-clean.json", json);
+
+		final LinkageUnitConfigException e = assertThrows(LinkageUnitConfigException.class,
+				() -> LinkageUnitConfigLoader.load(path));
+		assertTrue(e.getMessage().contains("CENTER_CLUSTERING"));
+		assertTrue(e.getMessage().contains("dirty"));
+	}
+
+	@Test
+	void loadsCenterClusteringWithAllDirtyParties() throws Exception {
+		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": false },"
+				+ " { \"name\": \"B\" } ], \"clusteringMethod\": \"CENTER_CLUSTERING\","
+				+ " \"database\": { \"url\": \"jdbc:postgresql://localhost:5432/primat_center_clustering\", \"user\": \"primat\", \"password\": \"primat\" } }";
+		final Path path = writeJson("center-dirty.json", json);
+
+		assertEquals(ClusteringMethod.CENTER_CLUSTERING, LinkageUnitConfigLoader.load(path).getClusteringMethod());
 	}
 
 	@Test

@@ -278,6 +278,7 @@ public class MultiSourceLinkage {
 	public LinkageOutcome runCenterClustering(Map<Party, Collection<Record>> input, Blocker blocker,
 			CenterClusteringConfig centerClusteringConfig, double threshold, ClusterFactory clusterFactory,
 			DbConnection dbConnection) {
+		requireSourceDirtiness(input, "CENTER_CLUSTERING", false);
 		final MultipartiteClusteringStrategy clusterer = new CenterClusteringPostprocessor(centerClusteringConfig);
 		final List<LinkedPair<Record>> matches = classifyAndCluster(input, blocker, clusterer, threshold);
 
@@ -312,6 +313,7 @@ public class MultiSourceLinkage {
 	public LinkageOutcome runGlobalGreedy(Map<Party, Collection<Record>> input, Blocker blocker,
 			GlobalGreedyConfig globalGreedyConfig, double threshold, ClusterFactory clusterFactory,
 			DbConnection dbConnection) {
+		requireSourceDirtiness(input, "GLOBAL_GREEDY", true);
 		final MultipartiteClusteringStrategy clusterer = new GlobalGreedyClusteringPostprocessor(globalGreedyConfig);
 		final List<LinkedPair<Record>> matches = classifyAndCluster(input, blocker, clusterer, threshold);
 
@@ -345,6 +347,7 @@ public class MultiSourceLinkage {
 	 */
 	public LinkageOutcome runClip(Map<Party, Collection<Record>> input, Blocker blocker, ClipConfig clipConfig,
 			double threshold, ClusterFactory clusterFactory, DbConnection dbConnection) {
+		requireSourceDirtiness(input, "CLIP", true);
 		final MultipartiteClusteringStrategy clusterer = new ClipClusteringPostprocessor(clipConfig);
 		final List<LinkedPair<Record>> matches = classifyAndCluster(input, blocker, clusterer, threshold);
 
@@ -374,6 +377,7 @@ public class MultiSourceLinkage {
 	 */
 	public LinkageOutcome runMcl(Map<Party, Collection<Record>> input, Blocker blocker, MclConfig mclConfig,
 			double threshold) {
+		requireSourceDirtiness(input, "MCL", false);
 		final MultipartiteClusteringStrategy clusterer = new MarkovClusteringPostprocessor(mclConfig);
 		final List<LinkedPair<Record>> matches = classifyAndCluster(input, blocker, clusterer, threshold);
 
@@ -522,6 +526,24 @@ public class MultiSourceLinkage {
 		final Matcher<Record> matcher = new BatchMatcher(blocker, similarityClassification, thresholdRefinement,
 				noPostprocessing);
 		return matcher.match(input);
+	}
+
+	/**
+	 * Guardia a runtime (difesa in profondita' rispetto a
+	 * {@code LinkageUnitConfigLoader}): MCL e Center Clustering accettano solo
+	 * party dirty, Global Greedy e CLIP solo party clean.
+	 *
+	 * @param allClean {@code true} se la strategia richiede tutte le party
+	 *                 {@code duplicateFree=true}, {@code false} se tutte dirty
+	 * @throws IllegalArgumentException se una party viola il vincolo
+	 */
+	static void requireSourceDirtiness(Map<Party, Collection<Record>> input, String method, boolean allClean) {
+		for (final Party party : input.keySet()) {
+			if (party.isDuplicateFree() != allClean) {
+				throw new IllegalArgumentException(method + " accetta solo sorgenti " + (allClean ? "clean" : "dirty")
+						+ ": la party '" + party.getName() + "' ha duplicateFree=" + party.isDuplicateFree());
+			}
+		}
 	}
 
 	/**

@@ -85,6 +85,12 @@ public final class LinkageUnitConfigLoader {
 			throw new LinkageUnitConfigException(
 					"'clusteringMethod' e' MSCD_AP ma nessuna party ha 'duplicateFree=true' in " + jsonPath);
 		}
+		if ((method == ClusteringMethod.MCL || method == ClusteringMethod.CENTER_CLUSTERING)
+				&& LinkageUnitOrchestrator.anyPartyDuplicateFree(parties)) {
+			throw new LinkageUnitConfigException(
+					"'clusteringMethod' e' " + method + " ma alcune party hanno 'duplicateFree=true' in " + jsonPath
+							+ " (" + method + " accetta solo sorgenti dirty: 'duplicateFree: false' per tutte le party)");
+		}
 		if ((method == ClusteringMethod.GLOBAL_GREEDY || method == ClusteringMethod.CLIP)
 				&& !LinkageUnitOrchestrator.allPartiesDuplicateFree(parties)) {
 			throw new LinkageUnitConfigException(

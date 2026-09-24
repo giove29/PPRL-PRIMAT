@@ -22,19 +22,32 @@ from itertools import combinations
 def load_from_csv(path):
     """Carica la linking table dal CSV di debug scritto da
     LinkageUnitOrchestrator.writeMclDebugFile (formato:
-    cluster_id,party,record_id,global_id).
+    cluster_id,party,record_id,global_id,party_dirty).
 
-    Ritorna una lista di dict {cluster_id, party, record_id, global_id}.
+    `party_dirty` (true/false) e' la negazione di Party.isDuplicateFree() lato
+    Java: decide se le coppie within-party di quella party contano (stessa
+    regola per-party della LU). Un CSV storico senza la colonna viene letto
+    come "nessuna party dirty" (solo coppie cross-party) con un avviso.
+
+    Ritorna una lista di dict {cluster_id, party, record_id, global_id,
+    party_dirty}.
     """
     records = []
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+        has_dirty = "party_dirty" in (reader.fieldnames or [])
+        if not has_dirty:
+            print("ATTENZIONE: {} non ha la colonna party_dirty (CSV scritto da una "
+                  "versione precedente della LU): le coppie within-party non "
+                  "vengono contate, le metriche possono non coincidere con quelle "
+                  "della LU.".format(path))
         for row in reader:
             records.append({
                 "cluster_id": int(row["cluster_id"]),
                 "party": row["party"],
                 "record_id": row["record_id"],
                 "global_id": row["global_id"],
+                "party_dirty": has_dirty and row["party_dirty"].strip().lower() == "true",
             })
     return records
 
@@ -73,7 +86,7 @@ def load_from_postgres(host, port, dbname, user, password):
     try:
         with conn.cursor() as cur:
             try:
-                cur.execute("SELECT name FROM party")
+                cur.execute("SELECT name, duplicatefree FROM party")
             except psycopg2.errors.UndefinedTable:
                 # Lo schema di questo DB viene creato da Hibernate
                 # (hbm2ddl.auto=update) solo al primo avvio della Linkage
@@ -89,7 +102,10 @@ def load_from_postgres(host, port, dbname, user, password):
                     "(le tabelle vengono create automaticamente al primo "
                     "avvio della Linkage Unit Service configurata per questa "
                     "strategia).".format(dbname))
-            party_names = [row[0] for row in cur.fetchall()]
+            party_rows = cur.fetchall()
+            party_names = [row[0] for row in party_rows]
+            # duplicatefree=false (NULL trattato come clean) => party dirty.
+            dirty_by_party = {row[0]: row[1] is False for row in party_rows}
 
             cur.execute("SELECT id, cluster_id, gid FROM record")
             rows = cur.fetchall()
@@ -101,11 +117,16 @@ def load_from_postgres(host, port, dbname, user, password):
 
     records = []
     for record_id, cluster_id, gid in rows:
+        party = _derive_party(record_id, party_names_by_length_desc)
+        if party == "UNKNOWN":
+            print("ATTENZIONE: nessun party noto e' prefisso del record id '{}': "
+                  "assegnato a UNKNOWN.".format(record_id))
         records.append({
             "record_id": record_id,
             "cluster_id": cluster_id,
             "global_id": gid,
-            "party": _derive_party(record_id, party_names_by_length_desc),
+            "party": party,
+            "party_dirty": dirty_by_party.get(party, False),
         })
     return records
 
@@ -119,62 +140,92 @@ def record_label(rec):
 
 def evaluate(records):
     """Calcola le metriche di qualita' del linkage rispetto al ground
-    truth (GLOBAL_ID), confrontando le coppie cross-party predette dal
-    clustering con quelle vere.
+    truth (GLOBAL_ID) con la STESSA regola per-party della LU
+    (MultiSourceLinkage.countGroundTruthMatches/countsForOutcome/
+    PerformanceMetrics.getMaxComparisons con ComparisonStrategy.DIRTY_AWARE):
 
-    Il ground truth e la predizione sono entrambi ristretti alle coppie
-    CROSS-party: una coppia within-party (stesso party, due id diversi)
-    non e' mai un "link" nel senso del record linkage multi-sorgente, e
-    includerla gonfierebbe artificialmente TP (vedi fix 2026-09-15 in
-    MultiSourceLinkage.buildOutcome, stesso principio applicato qui lato
-    Python per restare coerenti con la metrica Java).
+    - una coppia cross-party conta sempre;
+    - una coppia within-party conta solo se quella party e' dirty
+      (record["party_dirty"], assente = clean).
+
+    Ground truth e predizione (tutte le coppie di record nello stesso
+    cluster) usano la stessa regola, cosi' TP+FN = GT e
+    TP+FP+TN+FN = max_comparisons come nella riga "Linkage:" della LU.
 
     Nota: i record con cluster_id None (MSCD-AP, mai riconciliati su DB)
-    o global_id vuoto (nessun ground truth per quel record) semplicemente
-    non contribuiscono a predicted_pairs / true_pairs rispettivamente,
-    dato che defaultdict li raggruppa comunque sotto quella chiave "nulla"
-    ma un singolo elemento non genera mai combinazioni di coppie.
+    non generano coppie predette (non sono un cluster); restano nel GT e
+    nel numero di confronti massimi.
     """
     by_cluster = defaultdict(list)
     by_global_id = defaultdict(list)
+    dirty_parties = set()
+    count_by_party = defaultdict(int)
     for rec in records:
         by_cluster[rec["cluster_id"]].append(rec)
+        count_by_party[rec["party"]] += 1
+        if rec.get("party_dirty"):
+            dirty_parties.add(rec["party"])
         if rec["global_id"]:
             by_global_id[rec["global_id"]].append(rec)
 
-    # Ground truth: tutte le coppie cross-party che condividono lo stesso
-    # GLOBAL_ID (la stessa entita' reale vista da due sorgenti diverse).
-    true_pairs = set()
+    def counts(a, b):
+        return a["party"] != b["party"] or a["party"] in dirty_parties
+
+    # Ground truth (formula chiusa per GLOBAL_ID, come countGroundTruthMatches):
+    # prodotto tra party distinte + C(n,2) per ogni party dirty del gruppo.
+    gt = 0
     for gid, members in by_global_id.items():
-        for a, b in combinations(members, 2):
-            if a["party"] != b["party"]:
-                true_pairs.add(frozenset((record_label(a), record_label(b))))
+        per_party = defaultdict(int)
+        for m in members:
+            per_party[m["party"]] += 1
+        counts_list = list(per_party.items())
+        for i, (party_i, n_i) in enumerate(counts_list):
+            if party_i in dirty_parties:
+                gt += n_i * (n_i - 1) // 2
+            for _party_j, n_j in counts_list[i + 1:]:
+                gt += n_i * n_j
 
-    # Predetto: tutte le coppie cross-party che il clustering ha messo
-    # nello stesso cluster.
-    predicted_pairs = set()
+    # Predetto: ogni coppia di record nello stesso cluster (un record sta in
+    # un solo cluster, quindi nessuna coppia e' contata due volte).
+    tp = fp = 0
     for cid, members in by_cluster.items():
+        if cid is None:
+            continue
         for a, b in combinations(members, 2):
-            if a["party"] != b["party"]:
-                predicted_pairs.add(frozenset((record_label(a), record_label(b))))
+            if not counts(a, b):
+                continue
+            if a["global_id"] and a["global_id"] == b["global_id"]:
+                tp += 1
+            else:
+                fp += 1
+    fn = gt - tp
 
-    tp_pairs = predicted_pairs & true_pairs
-    fp_pairs = predicted_pairs - true_pairs
-    fn_pairs = true_pairs - predicted_pairs
+    # Confronti massimi: come PerformanceMetrics.getMaxComparisons con
+    # DIRTY_AWARE (cross-party + within-party per le sole party dirty).
+    party_counts = list(count_by_party.items())
+    max_comparisons = 0
+    for i, (party_i, n_i) in enumerate(party_counts):
+        if party_i in dirty_parties:
+            max_comparisons += n_i * (n_i - 1) // 2
+        for _party_j, n_j in party_counts[i + 1:]:
+            max_comparisons += n_i * n_j
+    tn = max_comparisons - tp - fp - fn
 
-    tp, fp, fn = len(tp_pairs), len(fp_pairs), len(fn_pairs)
     recall = tp / (tp + fn) if (tp + fn) else float("nan")
     precision = tp / (tp + fp) if (tp + fp) else float("nan")
     f1 = (2 * precision * recall / (precision + recall)
           if (precision + recall) and precision == precision and recall == recall
           else float("nan"))
 
-    # Entita' (GLOBAL_ID multi-party) i cui record sono finiti in cluster
+    # Entita' (GLOBAL_ID multi-party, o con duplicati in una party dirty) i cui record sono finiti in cluster
     # diversi: link mancati (false negative a livello di entita').
     split_entities = []
     for gid, members in by_global_id.items():
         parties = {m["party"] for m in members}
-        if len(parties) < 2:
+        has_dirty_duplicates = any(
+            p in dirty_parties and sum(1 for m in members if m["party"] == p) > 1
+            for p in parties)
+        if len(parties) < 2 and not has_dirty_duplicates:
             continue
         clusters_used = {m["cluster_id"] for m in members}
         if len(clusters_used) > 1:
@@ -200,7 +251,8 @@ def evaluate(records):
     unclustered_records = list(by_cluster.get(None, []))
 
     return {
-        "tp": tp, "fp": fp, "fn": fn,
+        "tp": tp, "fp": fp, "fn": fn, "tn": tn, "gt": gt,
+        "max_comparisons": max_comparisons,
         "recall": recall, "precision": precision, "f1": f1,
         "n_records": len(records),
         "n_clusters": len([c for c in by_cluster if c is not None]),
@@ -216,7 +268,10 @@ def print_report(result, title):
     script CLI, riusato identico da entrambi per non alterarne l'output."""
     print("=== {} - valutazione rispetto al ground truth (GLOBAL_ID) ===".format(title))
     print("record totali: {}  cluster totali: {}".format(result["n_records"], result["n_clusters"]))
-    print("coppie cross-party: TP={} FP={} FN={}".format(result["tp"], result["fp"], result["fn"]))
+    print("Linkage:   TP {} | FP {} | TN {} | FN {} | GT {} | confronti max {}".format(
+        result["tp"], result["fp"], result["tn"], result["fn"], result["gt"], result["max_comparisons"]))
+    if result["tp"] + result["fp"] + result["tn"] + result["fn"] != result["max_comparisons"]:
+        print("ATTENZIONE: TP+FP+TN+FN != confronti max (incoerenza nei dati).")
     print("recall={:.3f}  precision={:.3f}  F-measure={:.3f}".format(
         result["recall"], result["precision"], result["f1"]))
 

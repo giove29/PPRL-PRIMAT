@@ -33,8 +33,8 @@ def main():
         records = load_from_csv(path)
     except FileNotFoundError:
         print("File non trovato: {}".format(path))
-        print("Eseguire prima un run con almeno una party dirty su tutte "
-              "(routing MCL) e LinkageUnitOrchestrator.MCL_DEBUG_EXPORT=true.")
+        print("Eseguire prima un run MCL (tutte le party dirty) con "
+              "persistence.csvOutputPath configurato.")
         sys.exit(1)
 
     if not records:

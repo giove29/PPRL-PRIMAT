@@ -82,9 +82,10 @@ def print_comparison_row(label, source, result, error):
     if result is None:
         print("{:<28} {:<28} N/A — {}".format(label, source, error))
         return
-    print("{:<28} {:<28} recall={:.3f}  precision={:.3f}  F1={:.3f}  cluster={:<4} record={:<4} "
+    print("{:<28} {:<28} TP={} FP={} FN={} GT={}  recall={:.3f}  precision={:.3f}  F1={:.3f}  cluster={:<4} record={:<4} "
           "split={:<3} misti={:<3} singleton={:<3}".format(
-              label, source, result["recall"], result["precision"], result["f1"],
+              label, source, result["tp"], result["fp"], result["fn"], result["gt"],
+              result["recall"], result["precision"], result["f1"],
               result["n_clusters"], result["n_records"], len(result["split_entities"]),
               len(result["mixed_clusters"]), len(result["singleton_records"])))
 

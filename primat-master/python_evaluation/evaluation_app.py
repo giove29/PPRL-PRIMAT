@@ -304,21 +304,18 @@ class EvaluationApp(tk.Tk):
         self.metric_vars["f1"].set(_fmt_ratio(r["f1"]))
         self.metric_vars["n_records"].set(str(r["n_records"]))
         self.metric_vars["n_clusters"].set(str(r["n_clusters"]))
-        self.pairs_caption.set("[{}] Coppie cross-party — TP={}  FP={}  FN={}".format(
-            title, r["tp"], r["fp"], r["fn"]))
+        self.pairs_caption.set(
+            "[{}] Coppie (cross-party + within-party delle party dirty) — TP={} FP={} TN={} FN={} GT={}".format(
+                title, r["tp"], r["fp"], r["tn"], r["fn"], r["gt"]))
 
-        # Matrice di confusione pairwise cross-party. TN non e' rappresen-
-        # tabile in modo significativo in questo schema (il numero di coppie
-        # ne' vere ne' predette e' combinatorio su tutti i record, un valore
-        # enorme e privo di segnale): la cella resta esplicitamente N/A
-        # invece di un numero fuorviante, coerentemente con evaluate()/
-        # print_report() in eval_core.py, che non lo calcolano.
+        # Matrice di confusione pairwise, stessa regola per-party della LU
+        # (eval_core.evaluate): TN = confronti massimi - TP - FP - FN.
         self.ax_cm.clear()
-        matrix = [[r["tp"], r["fp"]], [r["fn"], float("nan")]]
+        matrix = [[r["tp"], r["fp"]], [r["fn"], r["tn"]]]
         self.ax_cm.imshow(matrix, cmap="Blues", vmin=0)
         cell_labels = [
             ["TP\n{}".format(r["tp"]), "FP\n{}".format(r["fp"])],
-            ["FN\n{}".format(r["fn"]), "N/A"],
+            ["FN\n{}".format(r["fn"]), "TN\n{}".format(r["tn"])],
         ]
         for i in range(2):
             for j in range(2):

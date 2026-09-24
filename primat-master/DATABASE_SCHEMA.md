@@ -32,7 +32,7 @@ Entity: `Party`. Una riga = un Data Owner conosciuto dalla Linkage Unit.
 | Colonna | Tipo | Significato |
 |---|---|---|
 | `name` (**PK**) | varchar | identificativo del party, es. `A`, `B`, `C` — lo stesso dichiarato nel campo `"party"` del JSON di configurazione passato a `DataOwnerService` |
-| `duplicatefree` | boolean | se `true`, il party è considerato una "clean source" (nessun duplicato interno) — usato da MSCD-AP/`ApConfig.addCleanSource(...)`; per Global Greedy/CLIP deve essere `true` per **tutte** le party (validato da `LinkageUnitConfigLoader`, non solo per almeno una) |
+| `duplicatefree` | boolean | se `true`, il party è considerato una "clean source" (nessun duplicato interno) — usato da MSCD-AP/`ApConfig.addCleanSource(...)`; per Global Greedy/CLIP deve essere `true` per **tutte** le party, per Center Clustering/MCL `false` per tutte (validato da `LinkageUnitConfigLoader` e da guardia runtime in `MultiSourceLinkage`). Il flag e' scritto solo alla prima persistenza e non piu' modificabile: se la config lo cambia, `DbConnection.addParties` abortisce (`checkPartyFlag`) e il DB va resettato; `python_evaluation` lo legge da qui per la regola within-party |
 
 ## `record`
 

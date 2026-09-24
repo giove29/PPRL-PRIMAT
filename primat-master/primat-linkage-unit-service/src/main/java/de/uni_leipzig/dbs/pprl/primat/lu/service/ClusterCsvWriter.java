@@ -18,7 +18,9 @@ import de.uni_leipzig.dbs.pprl.primat.lu.service.MultiSourceLinkage.LinkageOutco
 
 /**
  * Scrive una {@code LinkageOutcome#getLinkTable()} su CSV ({@code
- * cluster_id,party,record_id,global_id}, una riga per record), usato da
+ * cluster_id,party,record_id,global_id,party_dirty}, una riga per record;
+ * {@code party_dirty} = {@code !Party.isDuplicateFree()}, serve a
+ * {@code python_evaluation} per applicare la stessa regola within-party per-party della LU), usato da
  * {@link LinkageUnitOrchestrator} per qualunque strategia quando {@code
  * persistence.enabled=false} in config (nessun DB toccato). Prima di questa
  * classe l'export CSV era cablato solo nel ramo MCL di {@code runOnce()};
@@ -42,13 +44,14 @@ public final class ClusterCsvWriter {
 		long written = 0;
 		progress.update(0, total);
 		try (BufferedWriter writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
-			writer.write("cluster_id,party,record_id,global_id");
+			writer.write("cluster_id,party,record_id,global_id,party_dirty");
 			writer.newLine();
 			for (final Cluster cluster : outcome.getLinkTable()) {
 				progress.update(written++, total);
 				for (final Record record : cluster.getRecords()) {
 					writer.write(cluster.getId() + "," + csvField(record.getParty().getName()) + ","
-							+ csvField(record.getId()) + "," + csvField(record.getGlobalId()));
+							+ csvField(record.getId()) + "," + csvField(record.getGlobalId()) + ","
+							+ !record.getParty().isDuplicateFree());
 					writer.newLine();
 				}
 			}

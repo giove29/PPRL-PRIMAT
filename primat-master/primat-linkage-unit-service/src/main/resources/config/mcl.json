@@ -2,8 +2,7 @@
   "mqttBrokerUrl": "tcp://localhost:1883",
   "parties": [
     { "name": "A", "duplicateFree": false },
-    { "name": "B", "duplicateFree": false },
-    { "name": "C", "duplicateFree": false }
+    { "name": "B", "duplicateFree": false }
   ],
   "clusteringMethod": "MCL",
   "similarityThreshold": 0.75,

@@ -190,6 +190,24 @@ public class DbConnection {
 		}
 	}
 
+	/**
+	 * Il flag {@code duplicateFree} viene scritto solo alla prima persistenza
+	 * della party e mai aggiornato: se la config corrente lo cambia rispetto al
+	 * DB, i cluster storici sono stati costruiti con l'altra semantica
+	 * (within-party si'/no), quindi il run va abortito invece di proseguire su
+	 * uno stato incoerente (e far leggere flag stantii agli script di evaluation).
+	 *
+	 * @throws IllegalStateException se il flag differisce
+	 */
+	static void checkPartyFlag(Party existing, Party requested) {
+		if (existing.isDuplicateFree() != requested.isDuplicateFree()) {
+			throw new IllegalStateException("La party '" + requested.getName() + "' e' gia' persistita con duplicateFree="
+					+ existing.isDuplicateFree() + " ma la configurazione corrente dichiara duplicateFree="
+					+ requested.isDuplicateFree() + ". Il database e' stato creato con una configurazione diversa: "
+					+ "resettarlo (db_reset_scripts/reset_db.py) prima di rilanciare.");
+		}
+	}
+
 	public void addParties(Set<Party> parties) {
 		final EntityManager entityManager = openEntityManager();
 		try {
@@ -201,6 +219,8 @@ public class DbConnection {
 
 				if (p1 == null) {
 					entityManager.persist(party);
+				} else {
+					checkPartyFlag(p1, party);
 				}
 			}
 
