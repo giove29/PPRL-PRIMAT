@@ -3,9 +3,10 @@ colorato per ground truth (match vero / non-match).
 
 Un solo istogramma per contesto (le coppie confrontate sono quelle decise dal
 contesto clean/dirty, con una sola soglia), in tre pannelli:
-  - in alto: entrambe le classi in scala logaritmica su [0,1] (mostra le code e la sovrapposizione);
-  - in basso a sinistra: solo i match veri, scala lineare, zoom da 0.4;
-  - in basso a destra: solo i non-match, scala lineare, zoom da 0.4.
+  - in alto: entrambe le classi su [0,1] (mostra le code e la sovrapposizione);
+  - in basso a sinistra: solo i match veri, zoom da 0.4;
+  - in basso a destra: solo i non-match, zoom da 0.4.
+Tutti e tre con l'asse Y in scala logaritmica (i bin a 0 non compaiono).
 
 Uso (da qualunque directory; di default CSV e PNG stanno accanto a questo script):
     python python_evaluation/plot_similarity_histogram.py [csv] [soglia] [png]
@@ -84,8 +85,8 @@ def main():
     grid = fig.add_gridspec(2, 2)
     panels = (
         (grid[0, :], ("non_match", "match"), True, 0.0, "match e non-match, scala log"),
-        (grid[1, 0], ("match",), False, ZOOM_FROM, f"solo match veri, zoom >= {ZOOM_FROM:g}, scala lineare"),
-        (grid[1, 1], ("non_match",), False, ZOOM_FROM, f"solo non-match, zoom >= {ZOOM_FROM:g}, scala lineare"),
+        (grid[1, 0], ("match",), True, ZOOM_FROM, f"solo match veri, zoom >= {ZOOM_FROM:g}, scala log"),
+        (grid[1, 1], ("non_match",), True, ZOOM_FROM, f"solo non-match, zoom >= {ZOOM_FROM:g}, scala log"),
     )
     for spec, truths, log, x_from, title in panels:
         ax = fig.add_subplot(spec)

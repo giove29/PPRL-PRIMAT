@@ -61,6 +61,18 @@ public final class BlockingEvaluator {
 	}
 
 	/**
+	 * Chiave di deduplicazione di una coppia, indipendente dall'ordine dei due
+	 * record. {@link SubBlock#getRecords()} e' un {@code HashSet} il cui ordine
+	 * di iterazione puo' cambiare da un blocco all'altro (capacita' diversa):
+	 * senza normalizzare, la stessa coppia within-party (a,b) vista come (b,a)
+	 * in un altro blocco verrebbe contata due volte (PC oltre il 100%).
+	 */
+	private static Map.Entry<Record, Record> orderedPair(Record first, Record second) {
+		return first.getId().compareTo(second.getId()) <= 0 ? new SimpleImmutableEntry<>(first, second)
+			: new SimpleImmutableEntry<>(second, first);
+	}
+
+	/**
 	 * @param  blocks          the blocks produced by the blocking step to
 	 *                         evaluate.
 	 * @param  maxComparisons  the size of the full cross product without any
@@ -93,7 +105,7 @@ public final class BlockingEvaluator {
 					for (final Record leftRecord : left.getRecords()) {
 						for (final Record rightRecord : right.getRecords()) {
 
-							if (!seenPairs.add(new SimpleImmutableEntry<>(leftRecord, rightRecord))) {
+							if (!seenPairs.add(orderedPair(leftRecord, rightRecord))) {
 								continue;
 							}
 
@@ -113,7 +125,7 @@ public final class BlockingEvaluator {
 							final Record leftRecord = records.get(a);
 							final Record rightRecord = records.get(b);
 
-							if (!seenPairs.add(new SimpleImmutableEntry<>(leftRecord, rightRecord))) {
+							if (!seenPairs.add(orderedPair(leftRecord, rightRecord))) {
 								continue;
 							}
 
