@@ -137,7 +137,8 @@ public final class LinkageUnitConfigLoader {
 		return new LinkageUnitConfig(parties, method, similarityThreshold, raw.getRbfSize(), lsh[0], lsh[1], lsh[2],
 				lshSeed, mqttBrokerUrl, brokerConnectTimeoutSeconds, rbfCollectionTimeoutSeconds, rbfRepublishIntervalSeconds, clusterFactory,
 				persistenceEnabled, csvOutputPath, centerClusteringConfig, apConfig, mclConfig,
-				globalGreedyConfig, clipConfig, dbParams[0], dbParams[1], dbParams[2], dbParams[3]);
+				globalGreedyConfig, clipConfig, dbParams[0], dbParams[1], dbParams[2], dbParams[3],
+				Boolean.TRUE.equals(raw.getDebug()));
 	}
 
 	private static String readFile(Path jsonPath) throws LinkageUnitConfigException {

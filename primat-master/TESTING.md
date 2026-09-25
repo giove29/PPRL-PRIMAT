@@ -149,6 +149,11 @@ Script Python indipendenti, tutti in `python_evaluation/`, pensati per essere es
   python python_evaluation/evaluate_mscd_ap.py --strategy global-greedy
   python python_evaluation/evaluate_mscd_ap.py --strategy clip
   ```
+
+- **Istogramma delle similarità** (`python_evaluation/plot_similarity_histogram.py`): con `debug: true` nel JSON della LU, il run scrive `python_evaluation/similarity_histogram.csv` (percorso relativo alla root, dove si lancia la LU; colonne `truth,bin_low,bin_high,count`, `truth` = match vero/non-match secondo il `GLOBAL_ID`; un solo istogramma per contesto, senza divisione cross/within-party); il grafico (default: CSV e PNG accanto allo script, da qualunque directory) si genera con:
+  ```
+  python python_evaluation/plot_similarity_histogram.py python_evaluation/similarity_histogram.csv 0.75 python_evaluation/similarity_histogram.png
+  ```
 - **Tutte e 5 insieme, un confronto in un colpo solo** (`python_evaluation/evaluate_all.py`): valuta MCL (CSV) + le 4 strategie Postgres e stampa una tabella comparativa; una fonte non ancora eseguita/raggiungibile (schema/tabelle assenti, o container irraggiungibile) appare come riga `N/A` invece di interrompere lo script.
   ```bash
   python python_evaluation/evaluate_all.py

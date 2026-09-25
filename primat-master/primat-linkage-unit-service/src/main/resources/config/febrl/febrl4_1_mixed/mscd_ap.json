@@ -1,5 +1,6 @@
 {
   "mqttBrokerUrl": "tcp://localhost:1883",
+  "debug": true,
   "parties": [
     { "name": "org", "duplicateFree": true },
     { "name": "org1", "duplicateFree": false }
@@ -15,11 +16,7 @@
     }
   },
   "persistence": {
-    "enabled": true
-  },
-  "database": {
-    "url": "jdbc:postgresql://localhost:5432/primat_mscd_ap",
-    "user": "primat",
-    "password": "primat"
+    "enabled": false,
+    "csvOutputPath": "mscdap_debug_output.csv"
   }
 }

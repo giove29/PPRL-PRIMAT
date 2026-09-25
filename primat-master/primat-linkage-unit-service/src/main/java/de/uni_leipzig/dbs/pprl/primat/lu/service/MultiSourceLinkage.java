@@ -27,6 +27,7 @@ import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.BlockingEvaluator;
 import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.PerformanceMetrics;
 import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.QualityEvaluator;
 import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.QualityMetrics;
+import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.SimilarityHistogram;
 import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.true_match_checker.IdEqualityTrueMatchChecker;
 import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.true_match_checker.TrueMatchChecker;
 import de.uni_leipzig.dbs.pprl.primat.lu.linkage_result.LinkageResult;
@@ -130,6 +131,27 @@ public class MultiSourceLinkage {
 	 * {@link #buildOutcome} per calcolare i veri negativi senza ricalcolarlo.
 	 */
 	private long lastMaxComparisons;
+
+	private boolean similarityHistogramEnabled;
+
+	private SimilarityHistogramCollector lastSimilarityHistogram;
+
+	/**
+	 * Abilita la raccolta dell'istogramma delle similarita' di tutte le coppie
+	 * candidate (anche sotto soglia) durante {@link #classify}; disabilitata
+	 * di default, nessun overhead se spenta.
+	 */
+	public void setSimilarityHistogramEnabled(boolean enabled) {
+		this.similarityHistogramEnabled = enabled;
+	}
+
+	/**
+	 * @return gli istogrammi dell'ultima {@code runXxx(...)}, {@code null} se
+	 *         la raccolta non era abilitata
+	 */
+	public SimilarityHistogramCollector getLastSimilarityHistogram() {
+		return lastSimilarityHistogram;
+	}
 
 	/**
 	 * Le strategie di clustering multi-sorgente supportate — solo etichetta
@@ -517,6 +539,12 @@ public class MultiSourceLinkage {
 				comparisonStrategy, similarityCalculator, classificator, RedundancyCheckStrategy.MATCH_TWICE,
 				partitionFactory);
 		similarityClassification.setProgressListener(classificationProgress);
+		lastSimilarityHistogram = similarityHistogramEnabled
+				? new SimilarityHistogramCollector(SimilarityHistogram.DEFAULT_BINS, new IdEqualityTrueMatchChecker())
+				: null;
+		if (lastSimilarityHistogram != null) {
+			similarityClassification.setSimilarityObserver(lastSimilarityHistogram);
+		}
 		final ThresholdClassificationRefinement thresholdRefinement = new NoThresholdRefinement();
 
 		// Nessun postprocessing qui: il clustering vero e proprio viene applicato

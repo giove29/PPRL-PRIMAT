@@ -51,6 +51,7 @@ public class LinkageUnitConfig {
 	private final String dbUrl;
 	private final String dbUser;
 	private final String dbPassword;
+	private final boolean debug;
 	private DbConnection dbConnection;
 
 	/**
@@ -70,7 +71,7 @@ public class LinkageUnitConfig {
 			long brokerConnectTimeoutSeconds, long rbfCollectionTimeoutSeconds, long rbfRepublishIntervalSeconds, ClusterFactory clusterFactory,
 			boolean persistenceEnabled, String csvOutputPath, CenterClusteringConfig centerClusteringConfig,
 			ApConfig apConfig, MclConfig mclConfig, GlobalGreedyConfig globalGreedyConfig, ClipConfig clipConfig,
-			String dbPersistenceUnitName, String dbUrl, String dbUser, String dbPassword) {
+			String dbPersistenceUnitName, String dbUrl, String dbUser, String dbPassword, boolean debug) {
 		this.parties = parties;
 		this.clusteringMethod = clusteringMethod;
 		this.similarityThreshold = similarityThreshold;
@@ -95,6 +96,12 @@ public class LinkageUnitConfig {
 		this.dbUrl = dbUrl;
 		this.dbUser = dbUser;
 		this.dbPassword = dbPassword;
+		this.debug = debug;
+	}
+
+	/** @return {@code true} se il JSON ha {@code debug: true}: abilita l'istogramma delle similarita' (vedi {@link SimilarityHistogramCollector}). */
+	public boolean isDebug() {
+		return debug;
 	}
 
 	public List<Party> getParties() {
@@ -227,6 +234,8 @@ public class LinkageUnitConfig {
 		sb.append("MQTT tuning:            brokerConnectTimeout=").append(brokerConnectTimeoutSeconds)
 				.append("s, rbfCollectionTimeout=").append(rbfCollectionTimeoutSeconds)
 				.append("s, rbfRepublishInterval=").append(rbfRepublishIntervalSeconds).append("s\n");
+		sb.append("Debug:                  ").append(debug ? "On (istogramma similarita' -> "
+				+ SimilarityHistogramCsvWriter.DEFAULT_OUTPUT_PATH + ")" : "Off").append('\n');
 		sb.append("Party:\n");
 		for (final Party party : parties) {
 			sb.append("  - ").append(party.getName()).append(" [duplicateFree=").append(party.isDuplicateFree())

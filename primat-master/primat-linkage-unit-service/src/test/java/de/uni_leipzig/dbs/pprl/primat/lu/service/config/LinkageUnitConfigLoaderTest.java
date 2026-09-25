@@ -82,6 +82,14 @@ class LinkageUnitConfigLoaderTest {
 	}
 
 	@Test
+	void debugDefaultsToFalseAndCanBeEnabled() throws Exception {
+		assertFalse(LinkageUnitConfigLoader.load(writeJson("no_debug.json", MINIMAL_MCL_JSON)).isDebug());
+
+		final String withDebug = MINIMAL_MCL_JSON.replace("\"clusteringMethod\"", "\"debug\": true, \"clusteringMethod\"");
+		assertTrue(LinkageUnitConfigLoader.load(writeJson("debug.json", withDebug)).isDebug());
+	}
+
+	@Test
 	void loadsFullConfigWithOverrides() throws Exception {
 		final Path path = writeJson("full.json", FULL_CENTER_CLUSTERING_JSON);
 

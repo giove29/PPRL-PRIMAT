@@ -28,6 +28,7 @@ public class LinkageUnitJsonConfig {
 	private MclJsonConfig mcl;
 	private GlobalGreedyJsonConfig globalGreedy;
 	private ClipJsonConfig clip;
+	private Boolean debug;
 
 	public String getMqttBrokerUrl() {
 		return mqttBrokerUrl;
@@ -88,5 +89,10 @@ public class LinkageUnitJsonConfig {
 
 	public ClipJsonConfig getClip() {
 		return clip;
+	}
+
+	/** @return {@code true} abilita l'output diagnostico (istogramma delle similarita'), {@code null} se omesso (= {@code false}). */
+	public Boolean getDebug() {
+		return debug;
 	}
 }

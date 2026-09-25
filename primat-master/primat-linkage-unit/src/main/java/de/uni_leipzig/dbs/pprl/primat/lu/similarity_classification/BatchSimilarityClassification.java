@@ -46,6 +46,7 @@ public class BatchSimilarityClassification implements SimilarityClassification {
 	private LinkageResultPartitionFactory<Record> linkResPartFactory;
 
 	private ProgressListener progress = ProgressListener.NOOP;
+	private SimilarityObserver similarityObserver = SimilarityObserver.NOOP;
 
 	private Set<PartyPair> partyPairs;
 	private LinkageResult<Record> linkageResult;
@@ -84,6 +85,10 @@ public class BatchSimilarityClassification implements SimilarityClassification {
 
 	public void setProgressListener(ProgressListener progress) {
 		this.progress = progress;
+	}
+
+	public void setSimilarityObserver(SimilarityObserver similarityObserver) {
+		this.similarityObserver = similarityObserver;
 	}
 
 	private void getMatchesForBlock(Block block) {
@@ -132,6 +137,11 @@ public class BatchSimilarityClassification implements SimilarityClassification {
 					// TODO: get single similarity value that was used for
 					// threshold classifier
 					final MatchStatus matchStatus = classifier.classify(similarityVector);
+
+					final Double aggregated = similarityVector.getAggregatedValue();
+					if (aggregated != null) {
+						similarityObserver.observe(recLeft, recRight, aggregated);
+					}
 
 					// TODO: weight handling
 					final LinkedPair<Record> pair = new LinkedPair<Record>(recLeft, recRight, similarityVector,

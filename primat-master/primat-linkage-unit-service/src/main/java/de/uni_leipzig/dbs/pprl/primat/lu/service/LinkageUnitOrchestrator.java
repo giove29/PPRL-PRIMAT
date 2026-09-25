@@ -11,6 +11,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -32,6 +33,7 @@ import de.uni_leipzig.dbs.pprl.primat.lu.database.DbConnection;
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.affinity_propagation.data_structures.ApConfig;
 import de.uni_leipzig.dbs.pprl.primat.lu.utils.ConsoleProgressBar;
 import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.BlockingEvaluationResult;
+import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.SimilarityHistogram;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.MultiSourceLinkage.LinkageOutcome;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.ClusteringMethod;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.LinkageUnitConfigException;
@@ -139,6 +141,7 @@ public class LinkageUnitOrchestrator {
 		final MultiSourceLinkage linkage = new MultiSourceLinkage();
 		final boolean persistenceEnabled = config.isPersistenceEnabled();
 		final long[] persistenceStartNanos = new long[1];
+		linkage.setSimilarityHistogramEnabled(config.isDebug());
 		linkage.setClassificationProgress(new ConsoleProgressBar("Classificazione"));
 		linkage.setClusteringProgress(new ConsoleProgressBar("Clustering"));
 		linkage.setPersistenceProgress(new ConsoleProgressBar("Scrittura DB"));
@@ -191,7 +194,12 @@ public class LinkageUnitOrchestrator {
 		final long persistenceElapsedMillis = (System.nanoTime() - persistenceStartNanos[0]) / 1_000_000;
 		MultiSourceLinkage.phaseLine(persistenceEnabled ? "Persistenza DB" : "Scrittura CSV", persistenceElapsedMillis);
 
-		printOutcome(outcome, linkage.getLastBlockingEvaluation());
+		final SimilarityHistogramCollector histogram = linkage.getLastSimilarityHistogram();
+		if (histogram != null) {
+			SimilarityHistogramCsvWriter.write(histogram, SimilarityHistogramCsvWriter.DEFAULT_OUTPUT_PATH);
+		}
+
+		printOutcome(outcome, linkage.getLastBlockingEvaluation(), histogram, config.getSimilarityThreshold());
 		return outcome;
 	}
 
@@ -364,7 +372,37 @@ public class LinkageUnitOrchestrator {
 		return input;
 	}
 
-	private static void printOutcome(LinkageOutcome outcome, BlockingEvaluationResult blockingEval) {
+	private static void printHistogram(SimilarityHistogramCollector collector, double configuredThreshold) {
+		final SimilarityHistogram matches = collector.getMatches();
+		final SimilarityHistogram nonMatches = collector.getNonMatches();
+		final SimilarityHistogram histogram = collector.getAll();
+		if (histogram.getTotal() == 0) {
+			return;
+		}
+		final double valley = histogram.valleyThreshold();
+		final StringBuilder line = new StringBuilder(String.format(Locale.ROOT,
+				"  Similarita': %d coppie confrontate | Otsu %s | valle %s | bimodale %s | soglia config %.2f",
+				histogram.getTotal(), formatThreshold(histogram.otsuThreshold()), formatThreshold(valley),
+				histogram.isBimodal() ? "si" : "no", configuredThreshold));
+		if (histogram.isBimodal()) {
+			final SimilarityHistogram.Stats low = histogram.statsBelow(valley);
+			final SimilarityHistogram.Stats high = histogram.statsAtOrAbove(valley);
+			line.append(String.format(Locale.ROOT, " | modo basso mu=%.3f sd=%.3f | modo alto mu=%.3f sd=%.3f",
+					low.getMean(), low.getStdDev(), high.getMean(), high.getStdDev()));
+		}
+		System.out.println(line);
+		final long matchesAbove = matches.countAtOrAbove(configuredThreshold);
+		System.out.printf(Locale.ROOT,
+				"    ground truth: match veri %d (sotto soglia config %d) | non-match sopra soglia config %d%n",
+				matches.getTotal(), matches.getTotal() - matchesAbove, nonMatches.countAtOrAbove(configuredThreshold));
+	}
+
+	private static String formatThreshold(double threshold) {
+		return Double.isNaN(threshold) ? "n/d" : String.format(Locale.ROOT, "%.2f", threshold);
+	}
+
+	private static void printOutcome(LinkageOutcome outcome, BlockingEvaluationResult blockingEval,
+			SimilarityHistogramCollector histogram, double configuredThreshold) {
 		System.out.println();
 		System.out.println("--- Risultati ---");
 		System.out.printf("  Cluster:   %d%n", outcome.getLinkTable().size());
@@ -375,6 +413,10 @@ public class LinkageUnitOrchestrator {
 				outcome.getTruePositives(), outcome.getFalsePositives(), outcome.getTrueNegatives(),
 				outcome.getFalseNegatives(), outcome.getTotalTrueMatches(), outcome.getRecall(),
 				outcome.getPrecision(), outcome.getFMeasure());
+		if (histogram != null) {
+			printHistogram(histogram, configuredThreshold);
+			System.out.println("  Istogramma scritto in " + SimilarityHistogramCsvWriter.DEFAULT_OUTPUT_PATH);
+		}
 		System.out.println("=====");
 	}
 

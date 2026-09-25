@@ -1,5 +1,6 @@
 {
   "mqttBrokerUrl": "tcp://localhost:1883",
+  "debug": true,
   "parties": [
     { "name": "A", "duplicateFree": true },
     { "name": "B", "duplicateFree": false },
