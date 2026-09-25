@@ -34,6 +34,19 @@
 				<configuration>
 					<mainClass>de.uni_leipzig.dbs.pprl.primat.lu.service.LinkageUnitOrchestrator</mainClass>
 				</configuration>
+				<executions>
+					<!-- mvn -pl primat-linkage-unit-service exec:java@threshold-benchmark -Dexec.args="<keySize> <keys> <csv>..." -->
+					<execution>
+						<id>threshold-benchmark</id>
+						<phase>none</phase>
+						<goals>
+							<goal>java</goal>
+						</goals>
+						<configuration>
+							<mainClass>de.uni_leipzig.dbs.pprl.primat.lu.service.ThresholdBenchmark</mainClass>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>

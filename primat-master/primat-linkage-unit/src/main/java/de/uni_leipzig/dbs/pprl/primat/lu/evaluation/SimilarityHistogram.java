@@ -78,6 +78,28 @@ public final class SimilarityHistogram {
 		total++;
 	}
 
+	/** Come {@link #add(double)}, ripetuto {@code times} volte (dati sintetici, ricostruzioni da conteggi). */
+	public void add(double similarity, long times) {
+		if (Double.isNaN(similarity) || times <= 0) {
+			return;
+		}
+		final int bins = counts.length;
+		final int bin = (int) Math.min(bins - 1, Math.max(0, Math.floor(similarity * bins)));
+		counts[bin] += times;
+		total += times;
+	}
+
+	/** Istogramma con i conteggi per bin dati (copiati; conteggi negativi trattati come 0). */
+	public static SimilarityHistogram fromCounts(long[] binCounts) {
+		final SimilarityHistogram histogram = new SimilarityHistogram(binCounts.length);
+		for (int i = 0; i < binCounts.length; i++) {
+			final long count = Math.max(0, binCounts[i]);
+			histogram.counts[i] = count;
+			histogram.total += count;
+		}
+		return histogram;
+	}
+
 	/** Somma bin a bin di due istogrammi con lo stesso numero di bin. */
 	public static SimilarityHistogram combine(SimilarityHistogram a, SimilarityHistogram b) {
 		if (a.counts.length != b.counts.length) {

@@ -15,12 +15,15 @@ import java.util.List;
 import java.util.Set;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonParseException;
 
 import de.uni_leipzig.dbs.pprl.primat.common.model.ClusterBlockingKeyStrategy;
 import de.uni_leipzig.dbs.pprl.primat.common.model.ClusterFactory;
 import de.uni_leipzig.dbs.pprl.primat.common.model.ClusterRepresentantStrategy;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Party;
+import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.threshold.ThresholdEstimator;
+import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.threshold.ThresholdMode;
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.affinity_propagation.data_structures.ApConfig;
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.affinity_propagation.data_structures.PreferenceConfig;
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.center_clustering.data_structures.CenterClusteringConfig;
@@ -99,7 +102,8 @@ public final class LinkageUnitConfigLoader {
 							+ " (il vincolo source-consistency e' corretto solo se nessuna sorgente ha duplicati interni)");
 		}
 
-		final double similarityThreshold = resolveSimilarityThreshold(raw.getSimilarityThreshold(), jsonPath);
+		final SimilarityThresholdSpec similarityThreshold = resolveSimilarityThreshold(raw.getSimilarityThreshold(),
+				raw.getAutoThreshold(), jsonPath);
 		final int[] lsh = resolveLsh(raw.getBlocking(), raw.getRbfSize(), jsonPath);
 		final JaccardLshJsonConfig jaccardLsh = raw.getBlocking() != null ? raw.getBlocking().getJaccardLsh() : null;
 		final long lshSeed = jaccardLsh != null && jaccardLsh.getSeed() != null ? jaccardLsh.getSeed()
@@ -196,13 +200,50 @@ public final class LinkageUnitConfigLoader {
 		return parties;
 	}
 
-	private static double resolveSimilarityThreshold(Double raw, Path jsonPath) throws LinkageUnitConfigException {
-		final double threshold = raw != null ? raw : DEFAULT_SIMILARITY_THRESHOLD;
+	/**
+	 * {@code similarityThreshold}: un numero in (0,1] (soglia fissa, default
+	 * {@value #DEFAULT_SIMILARITY_THRESHOLD}) oppure {@code "auto"} /
+	 * {@code "auto_precision"} / {@code "auto_recall"}: soglia stimata dalla
+	 * distribuzione delle similarita', spostata di {@code autoThreshold.epsilon}
+	 * (default {@value ThresholdEstimator#DEFAULT_EPSILON}) per premiare
+	 * precision (+) o recall (-); con {@code "auto"} l'epsilon non ha effetto.
+	 */
+	private static SimilarityThresholdSpec resolveSimilarityThreshold(JsonElement raw, AutoThresholdJsonConfig auto,
+			Path jsonPath) throws LinkageUnitConfigException {
+		final Double epsilonRaw = auto != null ? auto.getEpsilon() : null;
+		if (raw != null && raw.isJsonPrimitive() && raw.getAsJsonPrimitive().isString()) {
+			final ThresholdMode mode = SimilarityThresholdSpec.parseMode(raw.getAsString());
+			if (mode == null) {
+				throw new LinkageUnitConfigException("'similarityThreshold' deve essere un numero in (0,1] oppure "
+						+ "\"auto\", \"auto_precision\", \"auto_recall\", trovato \"" + raw.getAsString() + "\" in " + jsonPath);
+			}
+			final double epsilon = epsilonRaw != null ? epsilonRaw : ThresholdEstimator.DEFAULT_EPSILON;
+			if (epsilon <= 0 || epsilon > ThresholdEstimator.MAX_EPSILON) {
+				throw new LinkageUnitConfigException("'autoThreshold.epsilon' deve essere in (0, "
+						+ ThresholdEstimator.MAX_EPSILON + "], trovato " + epsilon + " in " + jsonPath);
+			}
+			return SimilarityThresholdSpec.auto(mode, epsilon);
+		}
+		if (epsilonRaw != null) {
+			throw new LinkageUnitConfigException("'autoThreshold' e' ammesso solo con 'similarityThreshold' "
+					+ "\"auto\", \"auto_precision\" o \"auto_recall\" in " + jsonPath);
+		}
+		final double threshold;
+		if (raw == null || raw.isJsonNull()) {
+			threshold = DEFAULT_SIMILARITY_THRESHOLD;
+		}
+		else if (raw.isJsonPrimitive() && raw.getAsJsonPrimitive().isNumber()) {
+			threshold = raw.getAsDouble();
+		}
+		else {
+			throw new LinkageUnitConfigException("'similarityThreshold' deve essere un numero in (0,1] oppure "
+					+ "\"auto\", \"auto_precision\", \"auto_recall\" in " + jsonPath);
+		}
 		if (threshold <= 0 || threshold > 1) {
 			throw new LinkageUnitConfigException(
 					"'similarityThreshold' deve essere in (0,1], trovato " + threshold + " in " + jsonPath);
 		}
-		return threshold;
+		return SimilarityThresholdSpec.fixed(threshold);
 	}
 
 	/**

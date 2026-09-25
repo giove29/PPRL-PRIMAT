@@ -6,6 +6,8 @@ package de.uni_leipzig.dbs.pprl.primat.lu.service.config;
 
 import java.util.List;
 
+import com.google.gson.JsonElement;
+
 /**
  * DTO grezzo 1:1 del JSON di configurazione della Linkage Unit, popolato da
  * Gson per riflessione (nessuna validazione qui, tutta in
@@ -16,7 +18,8 @@ public class LinkageUnitJsonConfig {
 	private String mqttBrokerUrl;
 	private List<PartyJsonConfig> parties;
 	private ClusteringMethod clusteringMethod;
-	private Double similarityThreshold;
+	private JsonElement similarityThreshold;
+	private AutoThresholdJsonConfig autoThreshold;
 	private Integer rbfSize;
 	private BlockingJsonConfig blocking;
 	private MqttJsonConfig mqtt;
@@ -42,8 +45,13 @@ public class LinkageUnitJsonConfig {
 		return clusteringMethod;
 	}
 
-	public Double getSimilarityThreshold() {
+	/** @return un numero in (0,1] o una stringa {@code auto}/{@code auto_precision}/{@code auto_recall} (validato dal loader). */
+	public JsonElement getSimilarityThreshold() {
 		return similarityThreshold;
+	}
+
+	public AutoThresholdJsonConfig getAutoThreshold() {
+		return autoThreshold;
 	}
 
 	/** @return dimensione attesa dell'RBF in bit (informativa, es. per verificare la coerenza con l'XOR-Folding lato Data Owner), {@code null} se non impostata. */

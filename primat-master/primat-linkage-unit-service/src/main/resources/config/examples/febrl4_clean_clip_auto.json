@@ -3,9 +3,9 @@
   "debug": true,
   "parties": [
     { "name": "org", "duplicateFree": true },
-    { "name": "org1", "duplicateFree": false }
+    { "name": "org1", "duplicateFree": true }
   ],
-  "clusteringMethod": "MSCD_AP",
+  "clusteringMethod": "CLIP",
   "similarityThreshold": "auto",
   "rbfSize": 1024,
   "blocking": {
@@ -16,7 +16,11 @@
     }
   },
   "persistence": {
-    "enabled": false,
-    "csvOutputPath": "mscdap_debug_output.csv"
+    "enabled": true
+  },
+  "database": {
+    "url": "jdbc:postgresql://localhost:5432/primat_clip",
+    "user": "primat",
+    "password": "primat"
   }
 }

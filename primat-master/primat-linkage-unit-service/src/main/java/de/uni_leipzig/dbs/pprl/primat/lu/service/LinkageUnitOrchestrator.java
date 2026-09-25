@@ -34,6 +34,9 @@ import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.affinity_propagation.dat
 import de.uni_leipzig.dbs.pprl.primat.lu.utils.ConsoleProgressBar;
 import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.BlockingEvaluationResult;
 import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.SimilarityHistogram;
+import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.threshold.LshPassProbability;
+import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.threshold.OracleThreshold;
+import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.threshold.ThresholdEstimate;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.MultiSourceLinkage.LinkageOutcome;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.ClusteringMethod;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.LinkageUnitConfigException;
@@ -142,6 +145,8 @@ public class LinkageUnitOrchestrator {
 		final boolean persistenceEnabled = config.isPersistenceEnabled();
 		final long[] persistenceStartNanos = new long[1];
 		linkage.setSimilarityHistogramEnabled(config.isDebug());
+		linkage.setLshPassProbability(new LshPassProbability(config.getLshKeySize(), config.getLshKeys()));
+		linkage.setProfileProgress(new ConsoleProgressBar("Profilo similarita'"));
 		linkage.setClassificationProgress(new ConsoleProgressBar("Classificazione"));
 		linkage.setClusteringProgress(new ConsoleProgressBar("Clustering"));
 		linkage.setPersistenceProgress(new ConsoleProgressBar("Scrittura DB"));
@@ -155,7 +160,7 @@ public class LinkageUnitOrchestrator {
 		switch (method) {
 			case CENTER_CLUSTERING: {
 				outcome = linkage.runCenterClustering(effectiveInput, blocker,
-						config.getCenterClusteringConfig(), config.getSimilarityThreshold(), config.getClusterFactory(),
+						config.getCenterClusteringConfig(), config.getThresholdSpec(), config.getClusterFactory(),
 						dbConnection);
 				break;
 			}
@@ -163,18 +168,18 @@ public class LinkageUnitOrchestrator {
 				final ApConfig apConfig = config.getApConfig();
 				parties.stream().filter(Party::isDuplicateFree).map(Party::getName).forEach(apConfig::addCleanSource);
 				outcome = linkage.runMscdAp(effectiveInput, blocker, apConfig,
-						config.getSimilarityThreshold(), config.getClusterFactory(), dbConnection);
+						config.getThresholdSpec(), config.getClusterFactory(), dbConnection);
 				break;
 			}
 			case GLOBAL_GREEDY: {
 				outcome = linkage.runGlobalGreedy(effectiveInput, blocker,
-						config.getGlobalGreedyConfig(), config.getSimilarityThreshold(), config.getClusterFactory(),
+						config.getGlobalGreedyConfig(), config.getThresholdSpec(), config.getClusterFactory(),
 						dbConnection);
 				break;
 			}
 			case CLIP: {
 				outcome = linkage.runClip(effectiveInput, blocker, config.getClipConfig(),
-						config.getSimilarityThreshold(), config.getClusterFactory(), dbConnection);
+						config.getThresholdSpec(), config.getClusterFactory(), dbConnection);
 				break;
 			}
 			case MCL:
@@ -184,7 +189,7 @@ public class LinkageUnitOrchestrator {
 				// effectiveInput == input: nessuna chiamata a DbConnection, ogni run
 				// ricalcola da zero.
 				outcome = linkage.runMcl(effectiveInput, blocker, config.getMclConfig(),
-						config.getSimilarityThreshold());
+						config.getThresholdSpec());
 				break;
 			}
 		}
@@ -194,12 +199,20 @@ public class LinkageUnitOrchestrator {
 		final long persistenceElapsedMillis = (System.nanoTime() - persistenceStartNanos[0]) / 1_000_000;
 		MultiSourceLinkage.phaseLine(persistenceEnabled ? "Persistenza DB" : "Scrittura CSV", persistenceElapsedMillis);
 
-		final SimilarityHistogramCollector histogram = linkage.getLastSimilarityHistogram();
+		// In modalita' automatica l'istogramma esiste sempre (e' il profilo da cui si stima la soglia),
+		// ma il CSV e le righe diagnostiche si scrivono solo con debug: true.
+		final SimilarityHistogramCollector histogram = config.isDebug() ? linkage.getLastSimilarityHistogram() : null;
+		final ThresholdEstimate estimate = linkage.getLastThresholdEstimate();
 		if (histogram != null) {
 			SimilarityHistogramCsvWriter.write(histogram, SimilarityHistogramCsvWriter.DEFAULT_OUTPUT_PATH);
+			if (estimate != null) {
+				SimilarityThresholdCsvWriter.write(estimate, SimilarityThresholdCsvWriter.DEFAULT_OUTPUT_PATH);
+			}
 		}
 
-		printOutcome(outcome, linkage.getLastBlockingEvaluation(), histogram, config.getSimilarityThreshold());
+		final double appliedThreshold = estimate != null ? estimate.getThreshold() : config.getSimilarityThreshold();
+		printOutcome(outcome, linkage.getLastBlockingEvaluation(), histogram, appliedThreshold, estimate,
+				config.isPersistenceEnabled());
 		return outcome;
 	}
 
@@ -381,7 +394,7 @@ public class LinkageUnitOrchestrator {
 		}
 		final double valley = histogram.valleyThreshold();
 		final StringBuilder line = new StringBuilder(String.format(Locale.ROOT,
-				"  Similarita': %d coppie confrontate | Otsu %s | valle %s | bimodale %s | soglia config %.2f",
+				"  Similarita': %d coppie confrontate | Otsu %s | valle %s | bimodale %s | soglia applicata %.2f",
 				histogram.getTotal(), formatThreshold(histogram.otsuThreshold()), formatThreshold(valley),
 				histogram.isBimodal() ? "si" : "no", configuredThreshold));
 		if (histogram.isBimodal()) {
@@ -393,8 +406,38 @@ public class LinkageUnitOrchestrator {
 		System.out.println(line);
 		final long matchesAbove = matches.countAtOrAbove(configuredThreshold);
 		System.out.printf(Locale.ROOT,
-				"    ground truth: match veri %d (sotto soglia config %d) | non-match sopra soglia config %d%n",
+				"    ground truth: match veri %d (sotto soglia applicata %d) | non-match sopra soglia applicata %d%n",
 				matches.getTotal(), matches.getTotal() - matchesAbove, nonMatches.countAtOrAbove(configuredThreshold));
+	}
+
+	/**
+	 * Riga della soglia automatica (ginocchio, IC, regime, affidabilita', stime
+	 * di qualita' senza ground truth) con gli eventuali avvisi; con {@code
+	 * debug: true} anche la soglia oracolo calcolata sulla ground truth, solo
+	 * per validare la stima.
+	 */
+	private static void printThreshold(ThresholdEstimate estimate, SimilarityHistogramCollector histogram,
+			long totalTrueMatches, boolean persistenceEnabled) {
+		System.out.println("  Soglia:    " + estimate.describe());
+		System.out.println("    stimatori: " + estimate.describeEstimators());
+		if (!Double.isNaN(estimate.getEstimatedMatches())) {
+			System.out.printf(Locale.ROOT, "    match attesi tra i candidati ~%.0f | persi dal blocking ~%.0f%n",
+					estimate.getEstimatedMatches(), estimate.getEstimatedLostMatches());
+		}
+		for (final String warning : estimate.getWarnings()) {
+			System.out.println("    WARN: " + warning);
+		}
+		if (persistenceEnabled) {
+			System.out.println("    WARN: persistenza attiva: la soglia e' stimata sulle sole coppie di questo run "
+					+ "(record freschi + cluster storici candidati) e puo' variare tra un run e l'altro");
+		}
+		if (histogram != null) {
+			final OracleThreshold.Result oracle = OracleThreshold.bestF1(histogram.getMatches(),
+					histogram.getNonMatches(), totalTrueMatches);
+			System.out.printf(Locale.ROOT,
+					"    oracolo (ground truth): soglia %.3f F1 %.3f | scarto ginocchio - oracolo %+.3f%n",
+					oracle.getThreshold(), oracle.getF1(), estimate.getKnee() - oracle.getThreshold());
+		}
 	}
 
 	private static String formatThreshold(double threshold) {
@@ -402,7 +445,8 @@ public class LinkageUnitOrchestrator {
 	}
 
 	private static void printOutcome(LinkageOutcome outcome, BlockingEvaluationResult blockingEval,
-			SimilarityHistogramCollector histogram, double configuredThreshold) {
+			SimilarityHistogramCollector histogram, double configuredThreshold, ThresholdEstimate estimate,
+			boolean persistenceEnabled) {
 		System.out.println();
 		System.out.println("--- Risultati ---");
 		System.out.printf("  Cluster:   %d%n", outcome.getLinkTable().size());
@@ -413,6 +457,9 @@ public class LinkageUnitOrchestrator {
 				outcome.getTruePositives(), outcome.getFalsePositives(), outcome.getTrueNegatives(),
 				outcome.getFalseNegatives(), outcome.getTotalTrueMatches(), outcome.getRecall(),
 				outcome.getPrecision(), outcome.getFMeasure());
+		if (estimate != null) {
+			printThreshold(estimate, histogram, outcome.getTotalTrueMatches(), persistenceEnabled);
+		}
 		if (histogram != null) {
 			printHistogram(histogram, configuredThreshold);
 			System.out.println("  Istogramma scritto in " + SimilarityHistogramCsvWriter.DEFAULT_OUTPUT_PATH);

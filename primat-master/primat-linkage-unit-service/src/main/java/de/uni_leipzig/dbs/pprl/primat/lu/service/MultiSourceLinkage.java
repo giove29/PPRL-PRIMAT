@@ -18,6 +18,9 @@ import de.uni_leipzig.dbs.pprl.primat.common.model.Party;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.common.utils.DoubleListAggregator;
 import de.uni_leipzig.dbs.pprl.primat.lu.blocking.Block;
+import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.threshold.LshPassProbability;
+import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.threshold.ThresholdEstimate;
+import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.threshold.ThresholdEstimator;
 import de.uni_leipzig.dbs.pprl.primat.lu.blocking.Blocker;
 import de.uni_leipzig.dbs.pprl.primat.lu.classification.Classificator;
 import de.uni_leipzig.dbs.pprl.primat.lu.classification.ThresholdClassificator;
@@ -61,6 +64,7 @@ import de.uni_leipzig.dbs.pprl.primat.lu.similarity_classification.ComparisonStr
 import de.uni_leipzig.dbs.pprl.primat.lu.similarity_classification.RedundancyCheckStrategy;
 import de.uni_leipzig.dbs.pprl.primat.lu.similarity_classification.SimilarityClassification;
 import de.uni_leipzig.dbs.pprl.primat.lu.similarity_function.binary.BinarySimilarity;
+import de.uni_leipzig.dbs.pprl.primat.lu.service.config.SimilarityThresholdSpec;
 import de.uni_leipzig.dbs.pprl.primat.lu.similarity_vector.BaseSimilarityVectorAggregator;
 import de.uni_leipzig.dbs.pprl.primat.lu.similarity_vector.BaseSimilarityVectorFlattener;
 import de.uni_leipzig.dbs.pprl.primat.lu.similarity_vector.FlatSimilarityVectorAggregator;
@@ -135,6 +139,36 @@ public class MultiSourceLinkage {
 	private boolean similarityHistogramEnabled;
 
 	private SimilarityHistogramCollector lastSimilarityHistogram;
+
+	/** Risoluzione dell'istogramma del profilo in modalita' soglia automatica (bin da 0.005). */
+	static final int AUTO_HISTOGRAM_BINS = 200;
+
+	/** Soglia che nessuna coppia raggiunge (Jaccard <= 1): la passata di profilo confronta tutto e non classifica nulla. */
+	private static final double PROFILE_ONLY_THRESHOLD = 2d;
+
+	private LshPassProbability lshPassProbability = LshPassProbability.NONE;
+
+	private ThresholdEstimate lastThresholdEstimate;
+
+	private ProgressListener profileProgress = ProgressListener.NOOP;
+
+	/** Parametri LSH del blocking, usati dalla soglia automatica per correggere l'istogramma osservato. */
+	public void setLshPassProbability(LshPassProbability lshPassProbability) {
+		this.lshPassProbability = lshPassProbability == null ? LshPassProbability.NONE : lshPassProbability;
+	}
+
+	/** Progresso della passata di profilo delle similarita' (solo soglia automatica). */
+	public void setProfileProgress(ProgressListener listener) {
+		this.profileProgress = listener;
+	}
+
+	/**
+	 * @return la stima della soglia dell'ultima {@code runXxx(...)}, {@code null}
+	 *         se la soglia era fissa
+	 */
+	public ThresholdEstimate getLastThresholdEstimate() {
+		return lastThresholdEstimate;
+	}
 
 	/**
 	 * Abilita la raccolta dell'istogramma delle similarita' di tutte le coppie
@@ -266,7 +300,7 @@ public class MultiSourceLinkage {
 	 *         ground truth
 	 */
 	public LinkageOutcome runMscdAp(Map<Party, Collection<Record>> input, Blocker blocker, ApConfig apConfig,
-			double threshold, ClusterFactory clusterFactory, DbConnection dbConnection) {
+			SimilarityThresholdSpec threshold, ClusterFactory clusterFactory, DbConnection dbConnection) {
 		final MultipartiteClusteringStrategy clusterer = new AffinityPropagationPostprocessor<>(-0.1, -0.5,
 				apConfig.getDampingFactor(), apConfig);
 		final List<LinkedPair<Record>> matches = classifyAndCluster(input, blocker, clusterer, threshold);
@@ -325,7 +359,7 @@ public class MultiSourceLinkage {
 	 *         ground truth
 	 */
 	public LinkageOutcome runCenterClustering(Map<Party, Collection<Record>> input, Blocker blocker,
-			CenterClusteringConfig centerClusteringConfig, double threshold, ClusterFactory clusterFactory,
+			CenterClusteringConfig centerClusteringConfig, SimilarityThresholdSpec threshold, ClusterFactory clusterFactory,
 			DbConnection dbConnection) {
 		requireSourceDirtiness(input, "CENTER_CLUSTERING", false);
 		final MultipartiteClusteringStrategy clusterer = new CenterClusteringPostprocessor(centerClusteringConfig);
@@ -353,7 +387,7 @@ public class MultiSourceLinkage {
 	 *         ground truth
 	 */
 	public LinkageOutcome runGlobalGreedy(Map<Party, Collection<Record>> input, Blocker blocker,
-			GlobalGreedyConfig globalGreedyConfig, double threshold, ClusterFactory clusterFactory,
+			GlobalGreedyConfig globalGreedyConfig, SimilarityThresholdSpec threshold, ClusterFactory clusterFactory,
 			DbConnection dbConnection) {
 		requireSourceDirtiness(input, "GLOBAL_GREEDY", true);
 		final MultipartiteClusteringStrategy clusterer = new GlobalGreedyClusteringPostprocessor(globalGreedyConfig);
@@ -381,7 +415,7 @@ public class MultiSourceLinkage {
 	 *         ground truth
 	 */
 	public LinkageOutcome runClip(Map<Party, Collection<Record>> input, Blocker blocker, ClipConfig clipConfig,
-			double threshold, ClusterFactory clusterFactory, DbConnection dbConnection) {
+			SimilarityThresholdSpec threshold, ClusterFactory clusterFactory, DbConnection dbConnection) {
 		requireSourceDirtiness(input, "CLIP", true);
 		final MultipartiteClusteringStrategy clusterer = new ClipClusteringPostprocessor(clipConfig);
 		final List<LinkedPair<Record>> matches = classifyAndCluster(input, blocker, clusterer, threshold);
@@ -404,7 +438,7 @@ public class MultiSourceLinkage {
 	 *         ground truth
 	 */
 	public LinkageOutcome runMcl(Map<Party, Collection<Record>> input, Blocker blocker, MclConfig mclConfig,
-			double threshold) {
+			SimilarityThresholdSpec threshold) {
 		requireSourceDirtiness(input, "MCL", false);
 		final MultipartiteClusteringStrategy clusterer = new MarkovClusteringPostprocessor(mclConfig);
 		final List<LinkedPair<Record>> matches = classifyAndCluster(input, blocker, clusterer, threshold);
@@ -424,7 +458,7 @@ public class MultiSourceLinkage {
 	 * in memoria).
 	 */
 	private List<LinkedPair<Record>> classifyAndCluster(Map<Party, Collection<Record>> input, Blocker blocker,
-			MultipartiteClusteringStrategy clusterer, double threshold) {
+			MultipartiteClusteringStrategy clusterer, SimilarityThresholdSpec thresholdSpec) {
 		long phaseStart = System.nanoTime();
 		final Collection<Block> blocks = blocker.getBlocks(input);
 		final long maxComparisons = PerformanceMetrics.getMaxComparisons(input, ComparisonStrategy.DIRTY_AWARE);
@@ -434,8 +468,38 @@ public class MultiSourceLinkage {
 				.evaluate(blocks, maxComparisons, expectedMatches);
 		phaseLine("Blocking (valutazione)", elapsedMillis(phaseStart));
 
+		final double threshold;
+		final SimilarityHistogramCollector classificationCollector;
+		if (thresholdSpec.isAuto()) {
+			// La soglia serve durante la classificazione ma la distribuzione delle
+			// similarita' e' nota solo dopo aver confrontato tutte le coppie: prima
+			// passata di profilo (nessuna coppia classificata), poi stima, poi la
+			// classificazione vera con la soglia stimata.
+			phaseStart = System.nanoTime();
+			final SimilarityHistogramCollector profile = new SimilarityHistogramCollector(AUTO_HISTOGRAM_BINS,
+					new IdEqualityTrueMatchChecker());
+			classify(input, blocker, PROFILE_ONLY_THRESHOLD, profile, profileProgress);
+			phaseLine("Profilo similarita'", elapsedMillis(phaseStart));
+			phaseStart = System.nanoTime();
+			lastSimilarityHistogram = profile;
+			lastThresholdEstimate = new ThresholdEstimator(lshPassProbability).estimate(profile.getAll(),
+					thresholdSpec.getMode(), thresholdSpec.getEpsilon());
+			threshold = lastThresholdEstimate.getThreshold();
+			phaseLine("Stima soglia", elapsedMillis(phaseStart));
+			classificationCollector = null;
+		}
+		else {
+			threshold = thresholdSpec.getFixedValue();
+			lastThresholdEstimate = null;
+			classificationCollector = similarityHistogramEnabled
+					? new SimilarityHistogramCollector(SimilarityHistogram.DEFAULT_BINS, new IdEqualityTrueMatchChecker())
+					: null;
+			lastSimilarityHistogram = classificationCollector;
+		}
+
 		phaseStart = System.nanoTime();
-		final LinkageResult<Record> linkageResult = classify(input, blocker, threshold);
+		final LinkageResult<Record> linkageResult = classify(input, blocker, threshold, classificationCollector,
+				classificationProgress);
 		phaseLine("Classificazione", elapsedMillis(phaseStart));
 
 		phaseStart = System.nanoTime();
@@ -514,10 +578,12 @@ public class MultiSourceLinkage {
 	 * @param input     record di tutti i party
 	 * @param blocker   strategia di blocking da usare
 	 * @param threshold soglia di similarità Jaccard
+	 * @param collector istogramma da alimentare con la similarità di ogni coppia confrontata, {@code null} = nessuno
 	 * @return il {@code LinkageResult} grezzo, non ancora sottoposto a
 	 *         postprocessing 1:1
 	 */
-	private LinkageResult<Record> classify(Map<Party, Collection<Record>> input, Blocker blocker, double threshold) {
+	private LinkageResult<Record> classify(Map<Party, Collection<Record>> input, Blocker blocker, double threshold,
+			SimilarityHistogramCollector collector, ProgressListener progress) {
 		final ComparisonStrategy comparisonStrategy = ComparisonStrategy.DIRTY_AWARE;
 
 		final RecordSimilarityCalculator similarityCalculator = new BaseRecordSimilarityCalculator(
@@ -538,12 +604,9 @@ public class MultiSourceLinkage {
 		final BatchSimilarityClassification similarityClassification = new BatchSimilarityClassification(
 				comparisonStrategy, similarityCalculator, classificator, RedundancyCheckStrategy.MATCH_TWICE,
 				partitionFactory);
-		similarityClassification.setProgressListener(classificationProgress);
-		lastSimilarityHistogram = similarityHistogramEnabled
-				? new SimilarityHistogramCollector(SimilarityHistogram.DEFAULT_BINS, new IdEqualityTrueMatchChecker())
-				: null;
-		if (lastSimilarityHistogram != null) {
-			similarityClassification.setSimilarityObserver(lastSimilarityHistogram);
+		similarityClassification.setProgressListener(progress);
+		if (collector != null) {
+			similarityClassification.setSimilarityObserver(collector);
 		}
 		final ThresholdClassificationRefinement thresholdRefinement = new NoThresholdRefinement();
 

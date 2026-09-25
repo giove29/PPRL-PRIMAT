@@ -8,8 +8,14 @@ contesto clean/dirty, con una sola soglia), in tre pannelli:
   - in basso a destra: solo i non-match, zoom da 0.4.
 Tutti e tre con l'asse Y in scala logaritmica (i bin a 0 non compaiono).
 
+Se accanto allo script c'e' `similarity_threshold.csv` (scritto dalla LU con
+`similarityThreshold: auto*` e `debug: true`) e non si passa la soglia, il grafico
+disegna la soglia automatica con la banda dell'intervallo di confidenza al 95% e
+l'affidabilita' nella legenda.
+
 Uso (da qualunque directory; di default CSV e PNG stanno accanto a questo script):
-    python python_evaluation/plot_similarity_histogram.py [csv] [soglia] [png]
+    python python_evaluation/plot_similarity_histogram.py [csv] [soglia|-] [png]
+(`-` = nessuna soglia esplicita: usa similarity_threshold.csv se presente)
 """
 import csv
 import sys
@@ -40,14 +46,29 @@ def load(path):
 ZOOM_FROM = 0.4
 
 
-def draw(ax, bins_by_truth, truths, log, x_from, threshold):
+def load_threshold(path):
+    """Legge similarity_threshold.csv (key,value); None se manca."""
+    if not path.exists():
+        return None
+    with open(path, newline="", encoding="utf-8") as f:
+        return {row["key"]: row["value"] for row in csv.DictReader(f)}
+
+
+def draw(ax, bins_by_truth, truths, log, x_from, threshold, auto=None):
     for truth in truths:
         bins = bins_by_truth.get(truth, [])
         total = sum(b[2] for b in bins)
         ax.bar([b[0] for b in bins], [b[2] for b in bins], width=[b[1] - b[0] for b in bins],
                align="edge", color=COLORS[truth], edgecolor=SURFACE, linewidth=0.4, alpha=0.9,
                label=f"{TRUTH_LABELS[truth]} ({total:,})".replace(",", "."))
-    if threshold is not None:
+    if auto is not None:
+        ax.axvspan(float(auto["ci_low"]), float(auto["ci_high"]), color=INK_SECONDARY, alpha=0.15, linewidth=0,
+                   label="IC95 ginocchio")
+        ax.axvline(threshold, color=INK_SECONDARY, linestyle="--", linewidth=1.2,
+                   label=f"soglia {auto['mode']} {threshold:.3f}")
+        ax.plot([], [], " ", label=f"affidabilita' {float(auto['reliability']):.2f} {auto['reliability_level']} "
+                                    f"({auto['regime']})")
+    elif threshold is not None:
         ax.axvline(threshold, color=INK_SECONDARY, linestyle="--", linewidth=1.2,
                    label=f"soglia config {threshold:g}")
     visible_max = max((b[2] for t in truths for b in bins_by_truth.get(t, []) if b[0] >= x_from), default=1)
@@ -73,8 +94,11 @@ def draw(ax, bins_by_truth, truths, log, x_from, threshold):
 
 def main():
     csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE / "similarity_histogram.csv"
-    threshold = float(sys.argv[2]) if len(sys.argv) > 2 else None
+    threshold = float(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] not in ("", "-") else None
     out_path = Path(sys.argv[3]) if len(sys.argv) > 3 else HERE / "similarity_histogram.png"
+    auto = load_threshold(csv_path.parent / "similarity_threshold.csv") if threshold is None else None
+    if auto is not None:
+        threshold = float(auto["threshold"])
 
     data = load(csv_path)
     if sum(b[2] for bins in data.values() for b in bins) == 0:
@@ -90,7 +114,7 @@ def main():
     )
     for spec, truths, log, x_from, title in panels:
         ax = fig.add_subplot(spec)
-        draw(ax, data, truths, log, x_from, threshold)
+        draw(ax, data, truths, log, x_from, threshold, auto)
         ax.set_title(title, color=INK, loc="left", fontsize=11)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, facecolor=SURFACE)

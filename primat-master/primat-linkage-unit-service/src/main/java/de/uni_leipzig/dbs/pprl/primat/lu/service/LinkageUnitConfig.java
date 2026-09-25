@@ -15,6 +15,7 @@ import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.clip.data_structures.Cli
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.global_greedy.data_structures.GlobalGreedyConfig;
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.markov_clustering.data_structures.MclConfig;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.ClusteringMethod;
+import de.uni_leipzig.dbs.pprl.primat.lu.service.config.SimilarityThresholdSpec;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.LinkageUnitConfigLoader;
 
 /**
@@ -29,7 +30,7 @@ public class LinkageUnitConfig {
 
 	private final List<Party> parties;
 	private final ClusteringMethod clusteringMethod;
-	private final double similarityThreshold;
+	private final SimilarityThresholdSpec thresholdSpec;
 	private final Integer rbfSize;
 	private final int lshKeySize;
 	private final int lshKeys;
@@ -66,7 +67,7 @@ public class LinkageUnitConfig {
 	 * @param dbUser                utente del DB dedicato, {@code null} se MCL
 	 * @param dbPassword            password del DB dedicato, {@code null} se MCL
 	 */
-	public LinkageUnitConfig(List<Party> parties, ClusteringMethod clusteringMethod, double similarityThreshold,
+	public LinkageUnitConfig(List<Party> parties, ClusteringMethod clusteringMethod, SimilarityThresholdSpec thresholdSpec,
 			Integer rbfSize, int lshKeySize, int lshKeys, int lshValueRange, long lshSeed, String mqttBrokerUrl,
 			long brokerConnectTimeoutSeconds, long rbfCollectionTimeoutSeconds, long rbfRepublishIntervalSeconds, ClusterFactory clusterFactory,
 			boolean persistenceEnabled, String csvOutputPath, CenterClusteringConfig centerClusteringConfig,
@@ -74,7 +75,7 @@ public class LinkageUnitConfig {
 			String dbPersistenceUnitName, String dbUrl, String dbUser, String dbPassword, boolean debug) {
 		this.parties = parties;
 		this.clusteringMethod = clusteringMethod;
-		this.similarityThreshold = similarityThreshold;
+		this.thresholdSpec = thresholdSpec;
 		this.rbfSize = rbfSize;
 		this.lshKeySize = lshKeySize;
 		this.lshKeys = lshKeys;
@@ -112,8 +113,14 @@ public class LinkageUnitConfig {
 		return clusteringMethod;
 	}
 
+	/** @return la soglia fissa configurata, {@code NaN} se e' stata chiesta una soglia automatica (vedi {@link #getThresholdSpec()}). */
 	public double getSimilarityThreshold() {
-		return similarityThreshold;
+		return thresholdSpec.getFixedValue();
+	}
+
+	/** @return la soglia di similarita' come dichiarata in JSON: fissa oppure automatica (con epsilon). */
+	public SimilarityThresholdSpec getThresholdSpec() {
+		return thresholdSpec;
 	}
 
 	/** @return dimensione attesa dell'RBF in bit (informativa), {@code null} se non impostata in JSON. */
@@ -219,7 +226,7 @@ public class LinkageUnitConfig {
 		sb.append("==================== Linkage Unit ====================\n");
 		sb.append("Broker MQTT:            ").append(mqttBrokerUrl).append('\n');
 		sb.append("Strategia:              ").append(clusteringMethod).append('\n');
-		sb.append("Soglia similarita':     ").append(similarityThreshold).append('\n');
+		sb.append("Soglia similarita':     ").append(thresholdSpec).append('\n');
 		sb.append("RBF size (informativo): ").append(rbfSize != null ? rbfSize + " bit" : "non impostato").append('\n');
 		sb.append("Blocking (JaccardLSH):  keySize=").append(lshKeySize).append(", keys=").append(lshKeys)
 				.append(", valueRange=").append(lshValueRange).append(", seed=").append(lshSeed).append('\n');

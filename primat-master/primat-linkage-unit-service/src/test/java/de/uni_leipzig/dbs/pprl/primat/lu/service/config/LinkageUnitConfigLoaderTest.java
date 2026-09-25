@@ -15,9 +15,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+
 import org.junit.jupiter.api.Test;
 
 import de.uni_leipzig.dbs.pprl.primat.common.model.Party;
+import de.uni_leipzig.dbs.pprl.primat.lu.evaluation.threshold.ThresholdMode;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.LinkageUnitConfig;
 
 /**
@@ -333,5 +337,112 @@ class LinkageUnitConfigLoaderTest {
 		final LinkageUnitConfigException e = assertThrows(LinkageUnitConfigException.class,
 				() -> LinkageUnitConfigLoader.load(path));
 		assertTrue(e.getMessage().contains("similarityThreshold"));
+	}
+
+	private static String withThreshold(String thresholdJson, String autoThresholdJson) {
+		return "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": false } ],"
+				+ " \"clusteringMethod\": \"MCL\", \"similarityThreshold\": " + thresholdJson
+				+ (autoThresholdJson != null ? ", \"autoThreshold\": " + autoThresholdJson : "") + " }";
+	}
+
+	@Test
+	void autoThresholdModesAreParsedWithDefaultOrCustomEpsilon() throws Exception {
+		final SimilarityThresholdSpec exact = LinkageUnitConfigLoader
+				.load(writeJson("auto.json", withThreshold("\"auto\"", null))).getThresholdSpec();
+		assertTrue(exact.isAuto());
+		assertEquals(ThresholdMode.AUTO, exact.getMode());
+		assertEquals(0.03, exact.getEpsilon(), 1e-12);
+		assertTrue(Double.isNaN(exact.getFixedValue()));
+
+		final SimilarityThresholdSpec precision = LinkageUnitConfigLoader
+				.load(writeJson("auto_p.json", withThreshold("\"auto_precision\"", null))).getThresholdSpec();
+		assertEquals(ThresholdMode.AUTO_PRECISION, precision.getMode());
+		assertEquals(0.03, precision.getEpsilon(), 1e-12);
+
+		final SimilarityThresholdSpec recall = LinkageUnitConfigLoader
+				.load(writeJson("auto_r.json", withThreshold("\"AUTO_RECALL\"", "{ \"epsilon\": 0.05 }"))).getThresholdSpec();
+		assertEquals(ThresholdMode.AUTO_RECALL, recall.getMode());
+		assertEquals(0.05, recall.getEpsilon(), 1e-12);
+	}
+
+	@Test
+	void fixedThresholdIsStillANumberAndHasNoMode() throws Exception {
+		final LinkageUnitConfig config = LinkageUnitConfigLoader.load(writeJson("fixed.json", withThreshold("0.72", null)));
+		assertFalse(config.getThresholdSpec().isAuto());
+		assertEquals(0.72, config.getSimilarityThreshold(), 1e-12);
+		assertNull(config.getThresholdSpec().getMode());
+	}
+
+	@Test
+	void invalidAutoThresholdConfigurationsThrow() throws Exception {
+		assertThrows(LinkageUnitConfigException.class,
+				() -> LinkageUnitConfigLoader.load(writeJson("unknown.json", withThreshold("\"dynamic\"", null))));
+		assertThrows(LinkageUnitConfigException.class, () -> LinkageUnitConfigLoader
+				.load(writeJson("eps_zero.json", withThreshold("\"auto_precision\"", "{ \"epsilon\": 0 }"))));
+		assertThrows(LinkageUnitConfigException.class, () -> LinkageUnitConfigLoader
+				.load(writeJson("eps_big.json", withThreshold("\"auto_recall\"", "{ \"epsilon\": 0.25 }"))));
+		final LinkageUnitConfigException e = assertThrows(LinkageUnitConfigException.class, () -> LinkageUnitConfigLoader
+				.load(writeJson("eps_fixed.json", withThreshold("0.7", "{ \"epsilon\": 0.03 }"))));
+		assertTrue(e.getMessage().contains("autoThreshold"));
+		assertThrows(LinkageUnitConfigException.class,
+				() -> LinkageUnitConfigLoader.load(writeJson("bool.json", withThreshold("true", null))));
+	}
+
+	private static Path fullReferencePath() throws Exception {
+		return Path.of(LinkageUnitConfigLoaderTest.class.getResource("/config/examples/full_reference.json").toURI());
+	}
+
+	@Test
+	void fullReferenceExampleLoadsWithEverySectionRead() throws Exception {
+		final LinkageUnitConfig config = LinkageUnitConfigLoader.load(fullReferencePath());
+
+		assertEquals(ClusteringMethod.MSCD_AP, config.getClusteringMethod());
+		assertTrue(config.isDebug());
+		assertEquals(3, config.getParties().size());
+		assertEquals(ThresholdMode.AUTO_PRECISION, config.getThresholdSpec().getMode());
+		assertEquals(0.03, config.getThresholdSpec().getEpsilon(), 1e-12);
+		assertEquals(Integer.valueOf(1024), config.getRbfSize());
+		assertEquals(6, config.getLshKeySize());
+		assertEquals(20, config.getLshKeys());
+		assertEquals(1024, config.getLshValueRange());
+		assertEquals(42L, config.getLshSeed());
+		assertEquals(30L, config.getBrokerConnectTimeoutSeconds());
+		assertEquals(30L, config.getRbfCollectionTimeoutSeconds());
+		assertEquals(15L, config.getRbfRepublishIntervalSeconds());
+		assertTrue(config.isPersistenceEnabled());
+		assertEquals("mscd_ap_output.csv", config.getCsvOutputPath());
+		assertEquals(20000, config.getApConfig().getMaxApIteration());
+		assertEquals(0.7, config.getCenterClusteringConfig().getCenterAssignmentThreshold(), 1e-12);
+		assertEquals(100, config.getMclConfig().getMaxIterations());
+		assertEquals(0.7, config.getGlobalGreedyConfig().getMergeThreshold(), 1e-12);
+		assertEquals(0.4, config.getClipConfig().getWeightLinkStrength(), 1e-12);
+	}
+
+	@Test
+	void fullReferenceExampleAlsoLoadsWithTheOtherThresholdVariants() throws Exception {
+		final String original = Files.readString(fullReferencePath(), StandardCharsets.UTF_8);
+		for (final String variant : new String[] { "auto", "auto_recall" }) {
+			final JsonObject json = new Gson().fromJson(original, JsonObject.class);
+			json.addProperty("similarityThreshold", variant);
+			final LinkageUnitConfig config = LinkageUnitConfigLoader.load(writeJson("ref_" + variant + ".json", json.toString()));
+			assertEquals(ThresholdMode.valueOf(variant.toUpperCase()), config.getThresholdSpec().getMode());
+		}
+		final JsonObject fixed = new Gson().fromJson(original, JsonObject.class);
+		fixed.addProperty("similarityThreshold", 0.75);
+		fixed.remove("autoThreshold");
+		assertEquals(0.75,
+				LinkageUnitConfigLoader.load(writeJson("ref_fixed.json", fixed.toString())).getSimilarityThreshold(), 1e-12);
+	}
+
+	@Test
+	void autoThresholdExampleConfigsLoad() throws Exception {
+		final LinkageUnitConfig clip = LinkageUnitConfigLoader.load(
+				Path.of(LinkageUnitConfigLoaderTest.class.getResource("/config/examples/febrl4_clean_clip_auto.json").toURI()));
+		assertEquals(ThresholdMode.AUTO, clip.getThresholdSpec().getMode());
+
+		final LinkageUnitConfig center = LinkageUnitConfigLoader.load(Path.of(LinkageUnitConfigLoaderTest.class
+				.getResource("/config/examples/febrl3_dirty_center_clustering_auto_recall.json").toURI()));
+		assertEquals(ThresholdMode.AUTO_RECALL, center.getThresholdSpec().getMode());
+		assertEquals(0.05, center.getThresholdSpec().getEpsilon(), 1e-12);
 	}
 }

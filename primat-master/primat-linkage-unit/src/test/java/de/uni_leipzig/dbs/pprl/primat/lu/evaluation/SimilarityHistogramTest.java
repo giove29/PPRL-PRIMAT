@@ -112,4 +112,28 @@ class SimilarityHistogramTest {
 	void fewerThanTwoBinsIsRejected() {
 		assertThrows(IllegalArgumentException.class, () -> new SimilarityHistogram(1));
 	}
+
+	@Test
+	void addWithRepetitionsAndFromCountsAgreeWithSingleAdds() {
+		final SimilarityHistogram repeated = new SimilarityHistogram(10);
+		repeated.add(0.25, 3);
+		repeated.add(0.95, 2);
+		repeated.add(Double.NaN, 5);
+		repeated.add(0.5, 0);
+
+		final SimilarityHistogram single = new SimilarityHistogram(10);
+		for (int i = 0; i < 3; i++) {
+			single.add(0.25);
+		}
+		single.add(0.95);
+		single.add(0.95);
+
+		final SimilarityHistogram rebuilt = SimilarityHistogram.fromCounts(new long[] { 0, 0, 3, 0, 0, 0, 0, 0, 0, 2 });
+		for (int bin = 0; bin < 10; bin++) {
+			assertEquals(single.getCount(bin), repeated.getCount(bin));
+			assertEquals(single.getCount(bin), rebuilt.getCount(bin));
+		}
+		assertEquals(5, repeated.getTotal());
+		assertEquals(5, rebuilt.getTotal());
+	}
 }

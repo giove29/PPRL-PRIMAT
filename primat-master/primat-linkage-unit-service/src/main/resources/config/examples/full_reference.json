@@ -1,0 +1,120 @@
+{
+  "_note": "Configurazione di riferimento della Linkage Unit con TUTTI i campi supportati. Un JSON esegue una sola strategia (clusteringMethod): qui MSCD_AP; le sezioni delle altre strategie (centerClustering, mcl, globalGreedy, clip) sono validate ma ignorate. Le chiavi che iniziano con '_' sono commenti (Gson le ignora). Ogni valore mostrato e' il default, salvo dove indicato.",
+
+  "mqttBrokerUrl": "tcp://localhost:1883",
+  "_mqttBrokerUrl": "OBBLIGATORIO, identico a quello dei Data Owner. Il broker si avvia a parte (mvn -pl primat-mqtt-common exec:java -Dexec.args=\"1883\").",
+
+  "debug": true,
+  "_debug": "default false. true: istogramma delle similarita' (python_evaluation/similarity_histogram.csv), soglia oracolo con la ground truth e, in modalita' auto, python_evaluation/similarity_threshold.csv.",
+
+  "parties": [
+    { "name": "A", "duplicateFree": true },
+    { "name": "B", "duplicateFree": false },
+    { "name": "C", "duplicateFree": false }
+  ],
+  "_parties": "nomi unici (case-insensitive) e identici a quelli dei Data Owner. duplicateFree default true. Vincoli: MSCD_AP almeno una party clean; MCL e CENTER_CLUSTERING solo party dirty; GLOBAL_GREEDY e CLIP solo party clean; con una sola party, questa deve essere dirty.",
+
+  "clusteringMethod": "MSCD_AP",
+  "_clusteringMethod": "MSCD_AP | CENTER_CLUSTERING | MCL | GLOBAL_GREEDY | CLIP",
+
+  "similarityThreshold": "auto_precision",
+  "_similarityThreshold": "numero in (0,1] (soglia fissa, default 0.6) oppure stringa: \"auto\" = ginocchio stimato dalla distribuzione delle similarita'; \"auto_precision\" = ginocchio + epsilon (premia la precision); \"auto_recall\" = ginocchio - epsilon (premia la recall). Le modalita' auto aggiungono una passata di profilo prima della classificazione.",
+
+  "autoThreshold": {
+    "epsilon": 0.03,
+    "_epsilon": "spostamento assoluto in similarita' Jaccard, in (0, 0.2], default 0.03 (0.05 per premiare in modo piu' aggressivo). Solo con auto_precision/auto_recall; ignorato da \"auto\". Ammesso solo con una soglia automatica."
+  },
+
+  "rbfSize": 1024,
+  "_rbfSize": "informativo: lunghezza attesa dell'RBF in bit (con XOR-fold lato Data Owner e' la lunghezza dopo il folding). Se manca, valueRange di default e' 1024; la LU avvisa se l'RBF ricevuto ha un'altra lunghezza.",
+
+  "blocking": {
+    "jaccardLsh": {
+      "keySize": 6,
+      "keys": 20,
+      "valueRange": 1024,
+      "seed": 42,
+      "_jaccardLsh": "keySize=r permutazioni MinHash per chiave, keys=b chiavi; probabilita' che una coppia con Jaccard s passi il blocking: 1-(1-s^r)^b (usata dalla soglia automatica). Default keySize 4, keys 30, valueRange = rbfSize (o 1024), seed 42. Cambiare keySize/keys con la persistenza attiva richiede di resettare il DB (db_reset_scripts/reset_db.py)."
+    }
+  },
+
+  "mqtt": {
+    "brokerConnectTimeoutSeconds": 30,
+    "rbfCollectionTimeoutSeconds": 30,
+    "rbfRepublishIntervalSeconds": 15,
+    "_mqtt": "timeout di connessione al broker, attesa degli RBF di tutte le party, intervallo di ripubblicazione del comando di start."
+  },
+
+  "cluster": {
+    "blockingKeyStrategy": "UNION",
+    "representantStrategy": "RETAIN_FIRST",
+    "_cluster": "blockingKeyStrategy: RETAIN_FIRST | UNION | INTERSECTION | REPRESENTANT (default UNION); representantStrategy: RETAIN_FIRST | REPLACE (default RETAIN_FIRST)."
+  },
+
+  "persistence": {
+    "enabled": true,
+    "csvOutputPath": "mscd_ap_output.csv",
+    "_persistence": "enabled default true per tutte le strategie tranne MCL, che non puo' persistere (enabled=true e' un errore). true: Link Table su Postgres (sezione database obbligatoria). false: Link Table in memoria e CSV in csvOutputPath (default mcl_debug_output.csv per MCL, <metodo>_output.csv per gli altri)."
+  },
+
+  "database": {
+    "url": "jdbc:postgresql://localhost:5432/primat_mscd_ap",
+    "user": "primat",
+    "password": "primat",
+    "_database": "obbligatoria solo con persistence.enabled=true; un Postgres dedicato per strategia (primat_center_clustering, primat_mscd_ap, primat_global_greedy, primat_clip)."
+  },
+
+  "mscdAp": {
+    "maxApIteration": 20000,
+    "maxAdaptionIteration": 150,
+    "convergenceIter": 15,
+    "dampingFactor": 0.5,
+    "dampingAdaptionStep": 0.1,
+    "allSameSimClusteringThreshold": 0.3,
+    "noiseDecimalPlace": 3,
+    "singletonsForUnconvergedComponents": false,
+    "preference": {
+      "preferenceUseMinSimilarityDirtySrc": true,
+      "preferenceFixValueDirtySrc": -1.0,
+      "preferencePercentileDirtySrc": -1,
+      "preferenceUseMinSimilarityCleanSrc": false,
+      "preferenceFixValueCleanSrc": -1.0,
+      "preferencePercentileCleanSrc": 30,
+      "preferenceAdaptionStep": 0.05,
+      "_preference": "per ogni tipo di sorgente (Dirty/Clean) si sceglie UN solo criterio: minima similarita' (UseMinSimilarity=true, con FixValue<0 e Percentile<=0), oppure valore fisso in [0,1] (FixValue>=0, senza percentile), oppure percentile in 1..100 (FixValue<0). -1 disabilita FixValue e Percentile. preferenceAdaptionStep in [0,1)."
+    },
+    "_mscdAp": "vincoli: maxApIteration >= maxAdaptionIteration >= convergenceIter >= 2; dampingFactor in [0.5, 1); dampingAdaptionStep e allSameSimClusteringThreshold in [0, 1); noiseDecimalPlace < 0 disabilita il rumore; singletonsForUnconvergedComponents=false fa fallire il run se una componente non converge."
+  },
+
+  "centerClustering": {
+    "centerAssignmentThreshold": 0.7,
+    "_centerClustering": "usata solo con clusteringMethod CENTER_CLUSTERING. Soglia opzionale in [0,1] per l'assegnazione centro-foglia (default null = ogni arco gia' presente nel grafo)."
+  },
+
+  "mcl": {
+    "expansionPower": 2,
+    "inflationExponent": 2.0,
+    "pruningThreshold": 0.0001,
+    "maxIterations": 100,
+    "convergenceEpsilon": 0.000001,
+    "selfLoopWeight": 1.0,
+    "_mcl": "usata solo con clusteringMethod MCL. Vincoli: expansionPower >= 2, inflationExponent > 1, maxIterations > 0, gli altri >= 0."
+  },
+
+  "globalGreedy": {
+    "mergeThreshold": 0.7,
+    "_globalGreedy": "usata solo con clusteringMethod GLOBAL_GREEDY. mergeThreshold opzionale in [0,1] (default null = nessuna soglia aggiuntiva oltre a quella di classificazione)."
+  },
+
+  "clip": {
+    "weightSimilarity": 0.5,
+    "weightLinkDegree": 0.1,
+    "weightLinkStrength": 0.4,
+    "valueStrong": 1.0,
+    "valueNormal": 0.5,
+    "valueWeak": 0.0,
+    "ignoreWeakLinks": true,
+    "mergeThreshold": 0.7,
+    "_clip": "usata solo con clusteringMethod CLIP. I pesi non possono essere negativi; mergeThreshold opzionale in [0,1] (default null)."
+  }
+}
