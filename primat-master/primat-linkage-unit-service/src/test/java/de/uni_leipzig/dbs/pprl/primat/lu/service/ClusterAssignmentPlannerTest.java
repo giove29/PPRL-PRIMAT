@@ -35,6 +35,14 @@ class ClusterAssignmentPlannerTest {
 		return bitSet;
 	}
 
+	private static BitSet union(BitSet... sets) {
+		final BitSet result = new BitSet();
+		for (final BitSet set : sets) {
+			result.or(set);
+		}
+		return result;
+	}
+
 	private static Record record(String id, Party party, BitSet bitSet) {
 		final Record record = new Record();
 		record.setIdAttribute(new IdAttribute(id));
@@ -198,6 +206,31 @@ class ClusterAssignmentPlannerTest {
 
 		assertEquals(Set.of(x), plan.extensions.keySet());
 		assertEquals(2, plan.extensions.get(x).size());
+		assertTrue(plan.newComponents.isEmpty());
+	}
+
+	@Test
+	void optimalAssignmentBeatsGreedyWhenTwoCleanGroupsCompete() {
+		// Due record freschi della stessa party pulita, entrambi candidati per
+		// entrambi i cluster storici. Punteggi (Jaccard su bitset):
+		// ra-x=0.500 (il piu' alto in assoluto: il greedy lo sceglierebbe per
+		// primo e bloccherebbe rb fuori da x), ra-y=0.333, rb-x=0.364,
+		// rb-y=0.071. Il greedy darebbe ra->x, rb->y (totale 0.571). L'ottimo
+		// e' invece rb->x, ra->y (totale 0.697): il divario tra le due scelte
+		// di rb (0.364 vs 0.071) e' molto piu' ampio di quello di ra (0.500 vs
+		// 0.333), quindi conviene cedere x a rb.
+		final Record ra = record("RA", A_CLEAN, union(bits(0, 7), bits(10, 15)));
+		final Record rb = record("RB", A_CLEAN, union(bits(0, 3), bits(10, 10)));
+		final Record x1 = record("X1", B_DIRTY, bits(0, 9));
+		final Record y1 = record("Y1", C_DIRTY, bits(10, 19));
+		final Cluster x = cluster(1, x1);
+		final Cluster y = cluster(2, y1);
+
+		final ClusterAssignmentPlanner.Plan plan = ClusterAssignmentPlanner.plan(
+				List.of(pair(ra, x1), pair(ra, y1), pair(rb, x1), pair(rb, y1)), all(ra, rb, x1, y1));
+
+		assertEquals(List.of(rb), plan.extensions.get(x));
+		assertEquals(List.of(ra), plan.extensions.get(y));
 		assertTrue(plan.newComponents.isEmpty());
 	}
 

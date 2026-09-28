@@ -6,12 +6,12 @@
     { "name": "org1", "duplicateFree": false }
   ],
   "clusteringMethod": "MSCD_AP",
-  "similarityThreshold": "range",
-  "range": { "from": 0.55, "to": 0.95, "step": 0.05 },
+  "similarityThreshold": 0.75,
+  "_range": { "from": 0.6, "to": 0.95, "step": 0.05 },
   "rbfSize": 1024,
   "blocking": {
     "jaccardLsh": {
-      "keySize": 6,
+      "keySize": 8,
       "keys": 20,
       "valueRange": 1024
     }

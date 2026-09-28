@@ -16,6 +16,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import de.uni_leipzig.dbs.pprl.primat.common.model.Cluster;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
@@ -37,8 +38,15 @@ import de.uni_leipzig.dbs.pprl.primat.lu.similarity_function.binary.BinarySimila
  * record freschi tramite i {@code linkedPairs} fresco-fresco) entra in UN solo
  * cluster storico, scelto tra quelli collegati a {@code S} dall'algoritmo di
  * clustering del run;</li>
- * <li>tra più candidati vince il miglior {@link Score}: max Jaccard, poi
- * media Jaccard, poi blocking key in comune, poi id cluster più basso;</li>
+ * <li>tra più gruppi che competono per lo stesso cluster a causa del vincolo
+ * clean-source (stessa party {@code duplicateFree}), l'assegnazione non è più
+ * greedy ma un mapping ottimale ({@link HungarianAssignment}, un solve per
+ * ogni party {@code duplicateFree} coinvolta, in ordine alfabetico — vedi
+ * {@code SOTA_RICALCOLO_CLUSTER_INCREMENTALE.md} sezione 9): il peso di ogni
+ * coppia (gruppo, cluster) deriva dal miglior {@link Score} (max Jaccard,
+ * media Jaccard, blocking key in comune); i gruppi senza alcuna party
+ * {@code duplicateFree} non competono mai e vanno diretti al loro miglior
+ * candidato;</li>
  * <li>vincolo clean-source: un record di una party {@code duplicateFree}
  * non può entrare in un cluster che contiene già un record della stessa party
  * (storico o assegnato in questo run); se il candidato migliore viola il
@@ -109,19 +117,6 @@ final class ClusterAssignmentPlanner {
 		}
 	}
 
-	private static final class Candidate {
-
-		final int group;
-		final Cluster cluster;
-		final Score score;
-
-		Candidate(int group, Cluster cluster, Score score) {
-			this.group = group;
-			this.cluster = cluster;
-			this.score = score;
-		}
-	}
-
 	static Plan plan(Collection<LinkedPair<Record>> linkedPairs, Collection<Record> allRecords) {
 		final Plan plan = new Plan();
 
@@ -175,34 +170,98 @@ final class ClusterAssignmentPlanner {
 			candidateClusters.computeIfAbsent(group, g -> new LinkedHashSet<>()).add(freshAndHistoric[1].getCluster());
 		}
 
-		final List<Candidate> candidates = new ArrayList<>();
-		for (final Map.Entry<Integer, Set<Cluster>> entry : candidateClusters.entrySet()) {
-			for (final Cluster cluster : entry.getValue()) {
-				candidates.add(new Candidate(entry.getKey(), cluster, score(groups.get(entry.getKey()), cluster)));
-			}
-		}
-		candidates.sort(Comparator.<Candidate, Score>comparing(c -> c.score, Score.BEST_FIRST)
-				.thenComparingInt(c -> c.group));
-
 		final Map<Cluster, Set<String>> cleanPartiesIn = new HashMap<>();
 		final boolean[] assigned = new boolean[groups.size()];
-		for (final Candidate candidate : candidates) {
-			if (assigned[candidate.group]) {
-				continue;
-			}
-			final List<Record> group = groups.get(candidate.group);
-			final Set<String> occupied = cleanPartiesIn.computeIfAbsent(candidate.cluster,
-					ClusterAssignmentPlanner::cleanPartiesOf);
-			if (conflicts(group, occupied)) {
-				continue;
-			}
-			for (final Record record : group) {
+
+		// Party duplicateFree presenti in ciascun gruppo conteso: solo queste
+		// creano vera competizione (vincolo clean-source); i gruppi senza
+		// nessuna vanno diretti al loro miglior candidato.
+		final Map<Integer, Set<String>> partiesOfGroup = new LinkedHashMap<>();
+		final Set<String> contendedParties = new TreeSet<>();
+		for (final int group : candidateClusters.keySet()) {
+			final Set<String> parties = new HashSet<>();
+			for (final Record record : groups.get(group)) {
 				if (record.getParty().isDuplicateFree()) {
-					occupied.add(record.getParty().getName());
+					parties.add(record.getParty().getName());
 				}
 			}
-			assigned[candidate.group] = true;
-			plan.extensions.computeIfAbsent(candidate.cluster, c -> new ArrayList<>()).addAll(group);
+			partiesOfGroup.put(group, parties);
+			contendedParties.addAll(parties);
+			if (parties.isEmpty()) {
+				assignBestCandidate(plan, groups, candidateClusters, cleanPartiesIn, assigned, group);
+			}
+		}
+
+		// Un solve ungherese per ogni party duplicateFree coinvolta, in ordine
+		// alfabetico (Vatsalan, Christen, Rahm, DKE 2020, Def. 3.2), tra i
+		// gruppi non ancora assegnati che la contengono e i loro cluster
+		// candidati: sostituisce il vecchio ordinamento greedy globale con
+		// un'assegnazione di punteggio totale massimo, per party.
+		for (final String party : contendedParties) {
+			final List<Integer> competing = new ArrayList<>();
+			for (final Map.Entry<Integer, Set<String>> entry : partiesOfGroup.entrySet()) {
+				if (!assigned[entry.getKey()] && entry.getValue().contains(party)) {
+					competing.add(entry.getKey());
+				}
+			}
+			if (competing.isEmpty()) {
+				continue;
+			}
+
+			final List<Cluster> columns = new ArrayList<>();
+			final Set<Cluster> seen = new LinkedHashSet<>();
+			for (final int group : competing) {
+				for (final Cluster cluster : candidateClusters.get(group)) {
+					if (seen.add(cluster)) {
+						columns.add(cluster);
+					}
+				}
+			}
+
+			final double[][] weights = new double[competing.size()][columns.size()];
+			for (int i = 0; i < competing.size(); i++) {
+				final List<Record> groupRecords = groups.get(competing.get(i));
+				final Set<Cluster> candidatesForGroup = candidateClusters.get(competing.get(i));
+				for (int j = 0; j < columns.size(); j++) {
+					final Cluster cluster = columns.get(j);
+					final Set<String> occupied = cleanPartiesIn.computeIfAbsent(cluster,
+							ClusterAssignmentPlanner::cleanPartiesOf);
+					weights[i][j] = (candidatesForGroup.contains(cluster) && !conflicts(groupRecords, occupied))
+							? weight(score(groupRecords, cluster))
+							: HungarianAssignment.UNASSIGNED_WEIGHT;
+				}
+			}
+
+			final int[] chosen = HungarianAssignment.solveMaximize(weights);
+			for (int i = 0; i < competing.size(); i++) {
+				final int group = competing.get(i);
+				if (assigned[group] || chosen[i] < 0) {
+					continue;
+				}
+				final Cluster cluster = columns.get(chosen[i]);
+				final List<Record> groupRecords = groups.get(group);
+				final Set<String> occupied = cleanPartiesIn.get(cluster);
+				if (conflicts(groupRecords, occupied)) {
+					continue;
+				}
+				for (final Record record : groupRecords) {
+					if (record.getParty().isDuplicateFree()) {
+						occupied.add(record.getParty().getName());
+					}
+				}
+				assigned[group] = true;
+				plan.extensions.computeIfAbsent(cluster, c -> new ArrayList<>()).addAll(groupRecords);
+			}
+		}
+
+		// Rete di sicurezza: un gruppo rimasto senza assegnazione dopo tutti i
+		// solve delle sue party (es. tutti i suoi candidati gia' esauriti da
+		// assegnazioni piu' vantaggiose altrove) tenta comunque il suo miglior
+		// candidato residuo, invece di finire subito in un cluster nuovo.
+		for (final int group : candidateClusters.keySet()) {
+			if (!assigned[group]) {
+				assignBestCandidate(plan, groups, candidateClusters, cleanPartiesIn, assigned, group);
+			}
 		}
 
 		for (int group = 0; group < groups.size(); group++) {
@@ -242,6 +301,53 @@ final class ClusterAssignmentPlanner {
 			}
 		}
 		return new Score(max, average, shared, cluster.getId());
+	}
+
+	/**
+	 * Peso scalare per {@link HungarianAssignment}: {@code maxSimilarity} è il
+	 * termine dominante (stesso criterio primario di {@link Score#BEST_FIRST}),
+	 * {@code averageSimilarity} e {@code sharedBlockingKeys} pesano solo come
+	 * spareggio a parità di {@code maxSimilarity} (fattori 1e-6/1e-9, mai
+	 * abbastanza per invertire un confronto sul termine dominante).
+	 */
+	private static double weight(Score score) {
+		return score.maxSimilarity + score.averageSimilarity * 1e-6 + score.sharedBlockingKeys * 1e-9;
+	}
+
+	/**
+	 * Assegna {@code group} al suo miglior candidato ammissibile per
+	 * {@link Score#BEST_FIRST} (nessuna competizione da arbitrare — usato per i
+	 * gruppi senza alcuna party {@code duplicateFree} e come rete di sicurezza
+	 * per gruppi rimasti scoperti dopo i solve per party).
+	 */
+	private static void assignBestCandidate(Plan plan, List<List<Record>> groups,
+			Map<Integer, Set<Cluster>> candidateClusters, Map<Cluster, Set<String>> cleanPartiesIn,
+			boolean[] assigned, int group) {
+		final List<Record> groupRecords = groups.get(group);
+		Cluster best = null;
+		Score bestScore = null;
+		for (final Cluster cluster : candidateClusters.get(group)) {
+			final Set<String> occupied = cleanPartiesIn.computeIfAbsent(cluster, ClusterAssignmentPlanner::cleanPartiesOf);
+			if (conflicts(groupRecords, occupied)) {
+				continue;
+			}
+			final Score candidateScore = score(groupRecords, cluster);
+			if (best == null || Score.BEST_FIRST.compare(candidateScore, bestScore) < 0) {
+				best = cluster;
+				bestScore = candidateScore;
+			}
+		}
+		if (best == null) {
+			return;
+		}
+		final Set<String> occupied = cleanPartiesIn.get(best);
+		for (final Record record : groupRecords) {
+			if (record.getParty().isDuplicateFree()) {
+				occupied.add(record.getParty().getName());
+			}
+		}
+		assigned[group] = true;
+		plan.extensions.computeIfAbsent(best, c -> new ArrayList<>()).addAll(groupRecords);
 	}
 
 	private static double jaccard(Record a, Record b) {
