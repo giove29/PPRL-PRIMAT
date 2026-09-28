@@ -41,6 +41,7 @@ import de.uni_leipzig.dbs.pprl.primat.lu.service.MultiSourceLinkage.LinkageOutco
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.ClusteringMethod;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.LinkageUnitConfigException;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.LinkageUnitConfigLoader;
+import de.uni_leipzig.dbs.pprl.primat.lu.service.config.SimilarityThresholdSpec;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttClientWrapper;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttTopics;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.RbfCodec;
@@ -118,6 +119,10 @@ public class LinkageUnitOrchestrator {
 	 *                    pubblicazione/sottoscrizione MQTT fallisce
 	 */
 	public LinkageOutcome runOnce() throws Exception {
+		if (config.getThresholdSpec().isRange()) {
+			throw new IllegalStateException(
+					"'similarityThreshold: \"range\"' richiede runRangeBenchmark(), non runOnce() (vedi main)");
+		}
 		final String runId = UUID.randomUUID().toString();
 		final List<Party> parties = config.getParties();
 		final Map<Party, Collection<Record>> input = collectRbf(runId);
@@ -156,43 +161,8 @@ public class LinkageUnitOrchestrator {
 		});
 		final DbConnection dbConnection = config.getDbConnection(); // null se persistenceEnabled == false
 		final Map<Party, Collection<Record>> effectiveInput = persistenceEnabled ? buildPersistentInput(input) : input;
-		final LinkageOutcome outcome;
-		switch (method) {
-			case CENTER_CLUSTERING: {
-				outcome = linkage.runCenterClustering(effectiveInput, blocker,
-						config.getCenterClusteringConfig(), config.getThresholdSpec(), config.getClusterFactory(),
-						dbConnection);
-				break;
-			}
-			case MSCD_AP: {
-				final ApConfig apConfig = config.getApConfig();
-				parties.stream().filter(Party::isDuplicateFree).map(Party::getName).forEach(apConfig::addCleanSource);
-				outcome = linkage.runMscdAp(effectiveInput, blocker, apConfig,
-						config.getThresholdSpec(), config.getClusterFactory(), dbConnection);
-				break;
-			}
-			case GLOBAL_GREEDY: {
-				outcome = linkage.runGlobalGreedy(effectiveInput, blocker,
-						config.getGlobalGreedyConfig(), config.getThresholdSpec(), config.getClusterFactory(),
-						dbConnection);
-				break;
-			}
-			case CLIP: {
-				outcome = linkage.runClip(effectiveInput, blocker, config.getClipConfig(),
-						config.getThresholdSpec(), config.getClusterFactory(), dbConnection);
-				break;
-			}
-			case MCL:
-			default: {
-				// persistenceEnabled è sempre false per MCL (validatePersistence lo
-				// impedisce altrimenti in fase di caricamento config), quindi
-				// effectiveInput == input: nessuna chiamata a DbConnection, ogni run
-				// ricalcola da zero.
-				outcome = linkage.runMcl(effectiveInput, blocker, config.getMclConfig(),
-						config.getThresholdSpec());
-				break;
-			}
-		}
+		final LinkageOutcome outcome = dispatchStrategy(method, effectiveInput, blocker, config.getThresholdSpec(),
+				linkage, dbConnection);
 		if (!persistenceEnabled) {
 			ClusterCsvWriter.write(outcome, config.getCsvOutputPath(), new ConsoleProgressBar("Scrittura CSV"));
 		}
@@ -214,6 +184,136 @@ public class LinkageUnitOrchestrator {
 		printOutcome(outcome, linkage.getLastBlockingEvaluation(), histogram, appliedThreshold, estimate,
 				config.isPersistenceEnabled());
 		return outcome;
+	}
+
+	/**
+	 * Smista sulla strategia di clustering dichiarata in {@code config}, corpo
+	 * condiviso da {@link #runOnce()} (una sola soglia) e
+	 * {@link #runRangeBenchmark()} (una soglia per iterazione). {@code
+	 * apConfig.addCleanSource(...)} e' idempotente ({@link
+	 * de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.affinity_propagation.data_structures.ApConfig#addCleanSource}
+	 * usa un {@code Set}), quindi e' sicuro richiamare questo metodo piu' volte
+	 * sulla stessa {@code config} con lo stesso {@code apConfig} condiviso.
+	 */
+	private LinkageOutcome dispatchStrategy(ClusteringMethod method, Map<Party, Collection<Record>> input,
+			Blocker blocker, SimilarityThresholdSpec thresholdSpec, MultiSourceLinkage linkage,
+			DbConnection dbConnection) {
+		switch (method) {
+			case CENTER_CLUSTERING:
+				return linkage.runCenterClustering(input, blocker, config.getCenterClusteringConfig(), thresholdSpec,
+						config.getClusterFactory(), dbConnection);
+			case MSCD_AP: {
+				final ApConfig apConfig = config.getApConfig();
+				config.getParties().stream().filter(Party::isDuplicateFree).map(Party::getName)
+						.forEach(apConfig::addCleanSource);
+				return linkage.runMscdAp(input, blocker, apConfig, thresholdSpec, config.getClusterFactory(),
+						dbConnection);
+			}
+			case GLOBAL_GREEDY:
+				return linkage.runGlobalGreedy(input, blocker, config.getGlobalGreedyConfig(), thresholdSpec,
+						config.getClusterFactory(), dbConnection);
+			case CLIP:
+				return linkage.runClip(input, blocker, config.getClipConfig(), thresholdSpec,
+						config.getClusterFactory(), dbConnection);
+			case MCL:
+			default:
+				// dbConnection e' sempre null per MCL: nessuna chiamata a DbConnection,
+				// ogni iterazione ricalcola da zero.
+				return linkage.runMcl(input, blocker, config.getMclConfig(), thresholdSpec);
+		}
+	}
+
+	/**
+	 * Esito di una singola soglia testata da {@link #runRangeBenchmark()}.
+	 */
+	public static final class RangeIterationResult {
+		private final double threshold;
+		private final LinkageOutcome outcome;
+
+		RangeIterationResult(double threshold, LinkageOutcome outcome) {
+			this.threshold = threshold;
+			this.outcome = outcome;
+		}
+
+		public double getThreshold() {
+			return threshold;
+		}
+
+		public LinkageOutcome getOutcome() {
+			return outcome;
+		}
+	}
+
+	/**
+	 * Esegue un run in modalita' {@code similarityThreshold: "range"}: raccoglie
+	 * gli RBF UNA sola volta, poi ripete classificazione+clustering una volta
+	 * per ogni soglia di {@code config.getThresholdSpec().rangeValues()},
+	 * stampando le performance di ogni iterazione. Modalita' di solo testing:
+	 * {@code dbConnection} e' sempre {@code null} (mai persistenza/incremento,
+	 * indipendentemente da {@code persistence.enabled} nel JSON, gia'
+	 * cortocircuitato a {@code false} da {@code LinkageUnitConfigLoader}) e non
+	 * viene mai scritto alcun file (ne' CSV della Link Table, ne' CSV/istogramma
+	 * di debug): solo output a schermo, nulla di recuperabile dopo il run.
+	 *
+	 * @return un {@link RangeIterationResult} per ogni soglia testata, nello
+	 *         stesso ordine di {@code rangeValues()}
+	 * @throws Exception se la raccolta degli RBF va in timeout o la
+	 *                    pubblicazione/sottoscrizione MQTT fallisce
+	 */
+	public List<RangeIterationResult> runRangeBenchmark() throws Exception {
+		final SimilarityThresholdSpec rangeSpec = config.getThresholdSpec();
+		if (!rangeSpec.isRange()) {
+			throw new IllegalStateException("runRangeBenchmark() richiede 'similarityThreshold: \"range\"', questa "
+					+ "config ha " + rangeSpec);
+		}
+		final List<Double> thresholds = rangeSpec.rangeValues();
+		final String runId = UUID.randomUUID().toString();
+		final Map<Party, Collection<Record>> input = collectRbf(runId);
+
+		final LshKeyGenerator keyGenerator = new JaccardLshKeyGenerator(config.getLshKeySize(), config.getLshKeys(),
+				config.getLshValueRange(), config.getLshSeed());
+		final Blocker blocker = new LshBlocker(keyGenerator);
+		final ClusteringMethod method = config.getClusteringMethod();
+
+		System.out.println();
+		System.out.println("=== PRIMAT Linkage Unit | TEST range soglie " + rangeSpec + " | strategia: " + method
+				+ " | persistenza/incremento: DISABILITATI (solo testing) ===");
+		System.out.println("  run:      " + runId);
+		System.out.println("  soglie:   " + thresholds);
+		System.out.println("  ATTENZIONE: nessuno schema di clustering viene salvato su file/DB in questa modalita'.");
+		System.out.println();
+		System.out.printf(Locale.ROOT, "  %-7s %8s %8s %8s %8s %8s %8s %8s %8s %10s%n", "soglia", "cluster", "TP",
+				"FP", "FN", "GT", "recall", "precis.", "F1", "tempo(ms)");
+
+		final MultiSourceLinkage linkage = new MultiSourceLinkage();
+		final List<RangeIterationResult> results = new ArrayList<>();
+		double bestF1 = -1d;
+		double bestThreshold = Double.NaN;
+		boolean blockingPrinted = false;
+		for (final double t : thresholds) {
+			final LinkageOutcome outcome = dispatchStrategy(method, input, blocker, SimilarityThresholdSpec.fixed(t),
+					linkage, null);
+			results.add(new RangeIterationResult(t, outcome));
+			System.out.printf(Locale.ROOT, "  %-7.2f %8d %8d %8d %8d %8d %8.3f %8.3f %8.3f %10d%n", t,
+					outcome.getLinkTable().size(), outcome.getTruePositives(), outcome.getFalsePositives(),
+					outcome.getFalseNegatives(), outcome.getTotalTrueMatches(), outcome.getRecall(),
+					outcome.getPrecision(), outcome.getFMeasure(), linkage.getLastClusteringElapsedNanos() / 1_000_000);
+			if (!blockingPrinted) {
+				final BlockingEvaluationResult blockingEval = linkage.getLastBlockingEvaluation();
+				System.out.printf(Locale.ROOT,
+						"  Blocking (costante per tutte le soglie): coppie candidate %d | RR %.0f%% | PC %.0f%% | PQ %.0f%%%n",
+						blockingEval.getCandidatePairs(), blockingEval.getReductionRatio() * 100,
+						blockingEval.getPairsCompleteness() * 100, blockingEval.getPairsQuality() * 100);
+				blockingPrinted = true;
+			}
+			if (outcome.getFMeasure() > bestF1) {
+				bestF1 = outcome.getFMeasure();
+				bestThreshold = t;
+			}
+		}
+		System.out.printf(Locale.ROOT, "%n  Migliore F1: soglia %.2f (F1 %.3f)%n", bestThreshold, bestF1);
+		System.out.println("=====");
+		return results;
 	}
 
 	/**
@@ -497,6 +597,11 @@ public class LinkageUnitOrchestrator {
 
 		final LinkageUnitOrchestrator orchestrator = new LinkageUnitOrchestrator(config);
 		orchestrator.start();
-		orchestrator.runOnce();
+		if (config.getThresholdSpec().isRange()) {
+			orchestrator.runRangeBenchmark();
+		}
+		else {
+			orchestrator.runOnce();
+		}
 	}
 }

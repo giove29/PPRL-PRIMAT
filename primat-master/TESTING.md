@@ -127,6 +127,12 @@ Non serve nessuna modifica di codice per cambiare i dati: basta un nuovo file JS
 
 Per cambiare invece la composizione delle party o la strategia della Linkage Unit basta un nuovo JSON di config Linkage Unit (vedi sezione 4, schema completo nel bullet 2026-09-16 di `CLAUDE.md`): `parties[].duplicateFree`, `similarityThreshold`, parametri LSH/MCL/AP/Center Clustering hanno tutti un default che riproduce il comportamento storico se omessi.
 
+### 7bis. Benchmark di soglie (`similarityThreshold: "range"`, solo testing)
+
+Per confrontare rapidamente le performance a più soglie senza modificare/rilanciare il JSON ad ogni tentativo, impostare `"similarityThreshold": "range"` nel JSON della Linkage Unit (opzionalmente con una sezione `"range": {"from": 0.55, "to": 0.9, "step": 0.05}`, default `0.5..0.9` passo `0.1` se omessa). L'orchestratore (`LinkageUnitOrchestrator.runRangeBenchmark()`, invocato automaticamente da `main` in questa modalità) raccoglie gli RBF una sola volta e ripete classificazione+clustering per ogni soglia, stampando a schermo una riga per soglia (cluster, TP/FP/FN/GT, recall/precision/F1, tempo di clustering) e infine la soglia con F1 migliore.
+
+**Persistenza e incremento sono sempre disabilitati in questa modalità**, anche se `persistence.enabled: true` e una sezione `database` valida sono presenti nel JSON (nessun errore, il valore viene semplicemente ignorato): nessuno storico su Postgres viene letto o scritto, e non viene scritto nemmeno alcun file (né il CSV della Link Table, né gli export di debug dell'istogramma/soglia — `debug: true` non ha effetto in questa modalità). È pensata solo per confrontare a schermo l'effetto della soglia su un run, non per produrre un artefatto riutilizzabile.
+
 ## 8. Troubleshooting rapido
 
 - **`Broker MQTT non raggiungibile su tcp://...`** (Linkage Unit, esce dopo `mqtt.brokerConnectTimeoutSeconds`): il broker non è stato avviato o `mqttBrokerUrl` non combacia con host/porta del broker. Avviarlo (sezione 2bis) e riprovare.

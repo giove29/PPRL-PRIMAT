@@ -1,0 +1,17 @@
+key,value
+mode,auto_precision
+epsilon,0.0500
+threshold,0.6250
+knee,0.5750
+ci_low,0.5700
+ci_high,0.5850
+reliability,0.2409
+reliability_level,BASSA
+regime,VALLE
+pairs,2709094
+estimator_mix,
+estimator_triangolo,0.5775
+estimator_cambio,0.5725
+estimator_valle,0.5975
+estimator_otsu-log,0.5600
+estimator_vuoto,

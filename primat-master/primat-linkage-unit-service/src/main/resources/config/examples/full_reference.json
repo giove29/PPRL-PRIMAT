@@ -18,12 +18,13 @@
   "_clusteringMethod": "MSCD_AP | CENTER_CLUSTERING | MCL | GLOBAL_GREEDY | CLIP",
 
   "similarityThreshold": "auto_precision",
-  "_similarityThreshold": "numero in (0,1] (soglia fissa, default 0.6) oppure stringa: \"auto\" = ginocchio stimato dalla distribuzione delle similarita'; \"auto_precision\" = ginocchio + epsilon (premia la precision); \"auto_recall\" = ginocchio - epsilon (premia la recall). Le modalita' auto aggiungono una passata di profilo prima della classificazione.",
+  "_similarityThreshold": "numero in (0,1] (soglia fissa, default 0.6) oppure stringa: \"auto\" = ginocchio stimato dalla distribuzione delle similarita'; \"auto_precision\" = ginocchio + epsilon (premia la precision); \"auto_recall\" = ginocchio - epsilon (premia la recall); \"range\" = SOLO TESTING, ripete classificazione+clustering una volta per ogni soglia nell'intervallo 'range' (default 0.5..0.9 passo 0.1) stampando le performance di ognuna. Le modalita' auto aggiungono una passata di profilo prima della classificazione. Con \"range\" la persistenza/incremento (sezione 'persistence'/'database') vengono SEMPRE ignorati, anche se 'persistence.enabled' e' true nel JSON: nessuno schema di clustering viene mai scritto su DB/CSV in questa modalita', solo stdout. \"range\" e' mutuamente esclusivo con 'autoThreshold' (usa invece la sezione 'range': {from,to,step}, tutti opzionali).",
 
   "autoThreshold": {
     "epsilon": 0.03,
     "_epsilon": "spostamento assoluto in similarita' Jaccard, in (0, 0.2], default 0.03 (0.05 per premiare in modo piu' aggressivo). Solo con auto_precision/auto_recall; ignorato da \"auto\". Ammesso solo con una soglia automatica."
   },
+  "_range": "usata solo con 'similarityThreshold': \"range\" (mutuamente esclusiva con 'autoThreshold', quindi non attiva in questo esempio dato che sopra e' impostato auto_precision): { \"from\": 0.55, \"to\": 0.9, \"step\": 0.05 }, ogni campo indipendentemente opzionale (default from 0.5, to 0.9, step 0.1). Vincoli: from/to in (0,1], to > from, step > 0, al massimo 201 soglie risultanti.",
 
   "rbfSize": 1024,
   "_rbfSize": "informativo: lunghezza attesa dell'RBF in bit (con XOR-fold lato Data Owner e' la lunghezza dopo il folding). Se manca, valueRange di default e' 1024; la LU avvisa se l'RBF ricevuto ha un'altra lunghezza.",
@@ -54,7 +55,7 @@
   "persistence": {
     "enabled": true,
     "csvOutputPath": "mscd_ap_output.csv",
-    "_persistence": "enabled default true per tutte le strategie tranne MCL, che non puo' persistere (enabled=true e' un errore). true: Link Table su Postgres (sezione database obbligatoria). false: Link Table in memoria e CSV in csvOutputPath (default mcl_debug_output.csv per MCL, <metodo>_output.csv per gli altri)."
+    "_persistence": "enabled default true per tutte le strategie tranne MCL, che non puo' persistere (enabled=true e' un errore). true: Link Table su Postgres (sezione database obbligatoria). false: Link Table in memoria e CSV in csvOutputPath (default mcl_debug_output.csv per MCL, <metodo>_output.csv per gli altri). Con 'similarityThreshold': \"range\" questa intera sezione viene ignorata (persistenza sempre disabilitata, nessun CSV): vedi _similarityThreshold sopra."
   },
 
   "database": {

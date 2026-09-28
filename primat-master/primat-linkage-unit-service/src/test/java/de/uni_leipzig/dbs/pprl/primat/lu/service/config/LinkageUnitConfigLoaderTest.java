@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -444,5 +445,79 @@ class LinkageUnitConfigLoaderTest {
 				.getResource("/config/examples/febrl3_dirty_center_clustering_auto_recall.json").toURI()));
 		assertEquals(ThresholdMode.AUTO_RECALL, center.getThresholdSpec().getMode());
 		assertEquals(0.05, center.getThresholdSpec().getEpsilon(), 1e-12);
+	}
+
+	@Test
+	void rangeThresholdDefaultsWhenSectionOmitted() throws Exception {
+		final SimilarityThresholdSpec spec = LinkageUnitConfigLoader
+				.load(writeJson("range_default.json", withThreshold("\"range\"", null))).getThresholdSpec();
+		assertTrue(spec.isRange());
+		assertFalse(spec.isAuto());
+		assertTrue(Double.isNaN(spec.getFixedValue()));
+		assertEquals(0.5, spec.getRangeFrom(), 1e-12);
+		assertEquals(0.9, spec.getRangeTo(), 1e-12);
+		assertEquals(0.1, spec.getRangeStep(), 1e-12);
+		assertEquals(List.of(0.5, 0.6, 0.7, 0.8, 0.9), spec.rangeValues());
+	}
+
+	private static String withRange(String rangeJson) {
+		return "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": false } ],"
+				+ " \"clusteringMethod\": \"MCL\", \"similarityThreshold\": \"range\", \"range\": " + rangeJson + " }";
+	}
+
+	@Test
+	void rangeThresholdCustomBoundsAreParsedWithoutDrift() throws Exception {
+		final SimilarityThresholdSpec spec = LinkageUnitConfigLoader
+				.load(writeJson("range_custom.json", withRange("{ \"from\": 0.55, \"to\": 0.9, \"step\": 0.05 }")))
+				.getThresholdSpec();
+		assertEquals(0.55, spec.getRangeFrom(), 1e-12);
+		assertEquals(List.of(0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9), spec.rangeValues());
+	}
+
+	@Test
+	void invalidRangeThresholdConfigurationsThrow() throws Exception {
+		assertThrows(LinkageUnitConfigException.class, () -> LinkageUnitConfigLoader
+				.load(writeJson("range_to_le_from.json", withRange("{ \"from\": 0.8, \"to\": 0.5 }"))));
+		assertThrows(LinkageUnitConfigException.class,
+				() -> LinkageUnitConfigLoader.load(writeJson("range_step_zero.json", withRange("{ \"step\": 0 }"))));
+		assertThrows(LinkageUnitConfigException.class,
+				() -> LinkageUnitConfigLoader.load(writeJson("range_from_oob.json", withRange("{ \"from\": 0 }"))));
+		assertThrows(LinkageUnitConfigException.class,
+				() -> LinkageUnitConfigLoader.load(writeJson("range_to_oob.json", withRange("{ \"to\": 1.5 }"))));
+		assertThrows(LinkageUnitConfigException.class, () -> LinkageUnitConfigLoader.load(
+				writeJson("range_too_many_steps.json", withRange("{ \"from\": 0.01, \"to\": 1.0, \"step\": 0.001 }"))));
+		// autoThreshold e' ammesso solo con auto/auto_precision/auto_recall, non con "range"
+		final LinkageUnitConfigException withAuto = assertThrows(LinkageUnitConfigException.class,
+				() -> LinkageUnitConfigLoader.load(writeJson("range_with_auto.json", withThreshold("\"range\"", "{ \"epsilon\": 0.03 }"))));
+		assertTrue(withAuto.getMessage().contains("autoThreshold"));
+		// 'range' e' ammesso solo con similarityThreshold: "range"
+		final LinkageUnitConfigException rangeWithFixed = assertThrows(LinkageUnitConfigException.class,
+				() -> LinkageUnitConfigLoader.load(writeJson("fixed_with_range.json",
+						"{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": false } ],"
+								+ " \"clusteringMethod\": \"MCL\", \"similarityThreshold\": 0.7, \"range\": { \"from\": 0.5, \"to\": 0.9 } }")));
+		assertTrue(rangeWithFixed.getMessage().contains("range"));
+	}
+
+	@Test
+	void rangeThresholdForcesPersistenceOffEvenIfExplicitlyEnabled() throws Exception {
+		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\","
+				+ " \"parties\": [ { \"name\": \"A\", \"duplicateFree\": true }, { \"name\": \"B\", \"duplicateFree\": false } ],"
+				+ " \"clusteringMethod\": \"MSCD_AP\", \"similarityThreshold\": \"range\","
+				+ " \"persistence\": { \"enabled\": true },"
+				+ " \"database\": { \"url\": \"jdbc:postgresql://localhost:5432/primat_mscd_ap\", \"user\": \"primat\", \"password\": \"primat\" } }";
+		final LinkageUnitConfig config = LinkageUnitConfigLoader.load(writeJson("range_persistence.json", json));
+		assertTrue(config.getThresholdSpec().isRange());
+		assertFalse(config.isPersistenceEnabled());
+	}
+
+	@Test
+	void fullReferenceExampleAlsoLoadsWithRangeThresholdVariant() throws Exception {
+		final String original = Files.readString(fullReferencePath(), StandardCharsets.UTF_8);
+		final JsonObject json = new Gson().fromJson(original, JsonObject.class);
+		json.addProperty("similarityThreshold", "range");
+		json.remove("autoThreshold");
+		final LinkageUnitConfig config = LinkageUnitConfigLoader.load(writeJson("ref_range.json", json.toString()));
+		assertTrue(config.getThresholdSpec().isRange());
+		assertFalse(config.isPersistenceEnabled());
 	}
 }

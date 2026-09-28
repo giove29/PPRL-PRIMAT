@@ -231,7 +231,10 @@ public class LinkageUnitConfig {
 		sb.append("Blocking (JaccardLSH):  keySize=").append(lshKeySize).append(", keys=").append(lshKeys)
 				.append(", valueRange=").append(lshValueRange).append(", seed=").append(lshSeed).append('\n');
 		sb.append("Persistenza:            ");
-		if (persistenceEnabled) {
+		if (thresholdSpec.isRange()) {
+			sb.append("DISABILITATA (modalita' TEST range: nessun DB/CSV/incremento)");
+		}
+		else if (persistenceEnabled) {
 			sb.append("DB (url=").append(dbUrl).append(", user=").append(dbUser).append(')');
 		}
 		else {

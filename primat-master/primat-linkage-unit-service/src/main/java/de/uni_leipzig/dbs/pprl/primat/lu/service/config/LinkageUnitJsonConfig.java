@@ -20,6 +20,7 @@ public class LinkageUnitJsonConfig {
 	private ClusteringMethod clusteringMethod;
 	private JsonElement similarityThreshold;
 	private AutoThresholdJsonConfig autoThreshold;
+	private RangeJsonConfig range;
 	private Integer rbfSize;
 	private BlockingJsonConfig blocking;
 	private MqttJsonConfig mqtt;
@@ -45,13 +46,18 @@ public class LinkageUnitJsonConfig {
 		return clusteringMethod;
 	}
 
-	/** @return un numero in (0,1] o una stringa {@code auto}/{@code auto_precision}/{@code auto_recall} (validato dal loader). */
+	/** @return un numero in (0,1] o una stringa {@code auto}/{@code auto_precision}/{@code auto_recall}/{@code range} (validato dal loader). */
 	public JsonElement getSimilarityThreshold() {
 		return similarityThreshold;
 	}
 
 	public AutoThresholdJsonConfig getAutoThreshold() {
 		return autoThreshold;
+	}
+
+	/** @return sezione {@code range} (ammessa solo con {@code similarityThreshold: "range"}), {@code null} se assente. */
+	public RangeJsonConfig getRange() {
+		return range;
 	}
 
 	/** @return dimensione attesa dell'RBF in bit (informativa, es. per verificare la coerenza con l'XOR-Folding lato Data Owner), {@code null} se non impostata. */

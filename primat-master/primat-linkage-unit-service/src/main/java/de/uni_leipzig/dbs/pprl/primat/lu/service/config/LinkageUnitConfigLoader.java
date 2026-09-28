@@ -44,6 +44,11 @@ import de.uni_leipzig.dbs.pprl.primat.lu.service.LinkageUnitOrchestrator;
 public final class LinkageUnitConfigLoader {
 
 	private static final double DEFAULT_SIMILARITY_THRESHOLD = 0.6;
+	private static final double DEFAULT_RANGE_FROM = 0.5;
+	private static final double DEFAULT_RANGE_TO = 0.9;
+	private static final double DEFAULT_RANGE_STEP = 0.1;
+	/** Cap di sicurezza contro uno 'step' troppo fitto per errore (es. 0.0001): al massimo MAX_RANGE_STEPS + 1 soglie. */
+	private static final int MAX_RANGE_STEPS = 200;
 	private static final int DEFAULT_LSH_KEY_SIZE = 4;
 	private static final int DEFAULT_LSH_KEYS = 30;
 	private static final int DEFAULT_LSH_VALUE_RANGE = 1024;
@@ -103,7 +108,7 @@ public final class LinkageUnitConfigLoader {
 		}
 
 		final SimilarityThresholdSpec similarityThreshold = resolveSimilarityThreshold(raw.getSimilarityThreshold(),
-				raw.getAutoThreshold(), jsonPath);
+				raw.getAutoThreshold(), raw.getRange(), jsonPath);
 		final int[] lsh = resolveLsh(raw.getBlocking(), raw.getRbfSize(), jsonPath);
 		final JaccardLshJsonConfig jaccardLsh = raw.getBlocking() != null ? raw.getBlocking().getJaccardLsh() : null;
 		final long lshSeed = jaccardLsh != null && jaccardLsh.getSeed() != null ? jaccardLsh.getSeed()
@@ -123,7 +128,7 @@ public final class LinkageUnitConfigLoader {
 		final ClusterFactory clusterFactory = resolveClusterFactory(raw.getCluster());
 
 		validatePersistence(raw.getPersistence(), method, jsonPath);
-		final boolean persistenceEnabled = resolvePersistenceEnabled(raw.getPersistence(), method);
+		final boolean persistenceEnabled = resolvePersistenceEnabled(raw.getPersistence(), method, similarityThreshold);
 		final String csvOutputPath = resolveCsvOutputPath(raw.getPersistence(), method);
 		// [persistenceUnitName, url, user, password], tutti null se persistenceEnabled == false.
 		// Solo validati qui: la DbConnection vera e propria viene costruita lazy
@@ -202,31 +207,48 @@ public final class LinkageUnitConfigLoader {
 
 	/**
 	 * {@code similarityThreshold}: un numero in (0,1] (soglia fissa, default
-	 * {@value #DEFAULT_SIMILARITY_THRESHOLD}) oppure {@code "auto"} /
-	 * {@code "auto_precision"} / {@code "auto_recall"}: soglia stimata dalla
+	 * {@value #DEFAULT_SIMILARITY_THRESHOLD}), {@code "auto"} /
+	 * {@code "auto_precision"} / {@code "auto_recall"} (soglia stimata dalla
 	 * distribuzione delle similarita', spostata di {@code autoThreshold.epsilon}
-	 * (default {@value ThresholdEstimator#DEFAULT_EPSILON}) per premiare
-	 * precision (+) o recall (-); con {@code "auto"} l'epsilon non ha effetto.
+	 * — default {@value ThresholdEstimator#DEFAULT_EPSILON} — per premiare
+	 * precision (+) o recall (-); con {@code "auto"} l'epsilon non ha effetto),
+	 * oppure {@code "range"} (solo testing: vedi {@link #resolveRangeThreshold}).
 	 */
 	private static SimilarityThresholdSpec resolveSimilarityThreshold(JsonElement raw, AutoThresholdJsonConfig auto,
-			Path jsonPath) throws LinkageUnitConfigException {
+			RangeJsonConfig range, Path jsonPath) throws LinkageUnitConfigException {
 		final Double epsilonRaw = auto != null ? auto.getEpsilon() : null;
 		if (raw != null && raw.isJsonPrimitive() && raw.getAsJsonPrimitive().isString()) {
-			final ThresholdMode mode = SimilarityThresholdSpec.parseMode(raw.getAsString());
+			final String text = raw.getAsString();
+			if ("range".equalsIgnoreCase(text.trim())) {
+				if (epsilonRaw != null) {
+					throw new LinkageUnitConfigException("'autoThreshold' e' ammesso solo con 'similarityThreshold' "
+							+ "\"auto\", \"auto_precision\" o \"auto_recall\", non con \"range\" in " + jsonPath);
+				}
+				return resolveRangeThreshold(range, jsonPath);
+			}
+			final ThresholdMode mode = SimilarityThresholdSpec.parseMode(text);
 			if (mode == null) {
 				throw new LinkageUnitConfigException("'similarityThreshold' deve essere un numero in (0,1] oppure "
-						+ "\"auto\", \"auto_precision\", \"auto_recall\", trovato \"" + raw.getAsString() + "\" in " + jsonPath);
+						+ "\"auto\", \"auto_precision\", \"auto_recall\", \"range\", trovato \"" + text + "\" in " + jsonPath);
 			}
 			final double epsilon = epsilonRaw != null ? epsilonRaw : ThresholdEstimator.DEFAULT_EPSILON;
 			if (epsilon <= 0 || epsilon > ThresholdEstimator.MAX_EPSILON) {
 				throw new LinkageUnitConfigException("'autoThreshold.epsilon' deve essere in (0, "
 						+ ThresholdEstimator.MAX_EPSILON + "], trovato " + epsilon + " in " + jsonPath);
 			}
+			if (range != null) {
+				throw new LinkageUnitConfigException(
+						"'range' e' ammesso solo con 'similarityThreshold': \"range\" in " + jsonPath);
+			}
 			return SimilarityThresholdSpec.auto(mode, epsilon);
 		}
 		if (epsilonRaw != null) {
 			throw new LinkageUnitConfigException("'autoThreshold' e' ammesso solo con 'similarityThreshold' "
 					+ "\"auto\", \"auto_precision\" o \"auto_recall\" in " + jsonPath);
+		}
+		if (range != null) {
+			throw new LinkageUnitConfigException(
+					"'range' e' ammesso solo con 'similarityThreshold': \"range\" in " + jsonPath);
 		}
 		final double threshold;
 		if (raw == null || raw.isJsonNull()) {
@@ -237,13 +259,47 @@ public final class LinkageUnitConfigLoader {
 		}
 		else {
 			throw new LinkageUnitConfigException("'similarityThreshold' deve essere un numero in (0,1] oppure "
-					+ "\"auto\", \"auto_precision\", \"auto_recall\" in " + jsonPath);
+					+ "\"auto\", \"auto_precision\", \"auto_recall\", \"range\" in " + jsonPath);
 		}
 		if (threshold <= 0 || threshold > 1) {
 			throw new LinkageUnitConfigException(
 					"'similarityThreshold' deve essere in (0,1], trovato " + threshold + " in " + jsonPath);
 		}
 		return SimilarityThresholdSpec.fixed(threshold);
+	}
+
+	/**
+	 * {@code range}: intervallo di soglie da testare in sequenza con
+	 * {@code "similarityThreshold": "range"} (solo testing: nessuna
+	 * persistenza/incremento viene mai applicata in questa modalita', vedi
+	 * {@link #resolvePersistenceEnabled}). Ogni campo e' indipendentemente
+	 * opzionale (default {@value #DEFAULT_RANGE_FROM}/{@value #DEFAULT_RANGE_TO}/
+	 * {@value #DEFAULT_RANGE_STEP}), come {@code autoThreshold.epsilon}.
+	 */
+	private static SimilarityThresholdSpec resolveRangeThreshold(RangeJsonConfig range, Path jsonPath)
+			throws LinkageUnitConfigException {
+		final double from = range != null && range.getFrom() != null ? range.getFrom() : DEFAULT_RANGE_FROM;
+		final double to = range != null && range.getTo() != null ? range.getTo() : DEFAULT_RANGE_TO;
+		final double step = range != null && range.getStep() != null ? range.getStep() : DEFAULT_RANGE_STEP;
+		if (from <= 0 || from > 1) {
+			throw new LinkageUnitConfigException("'range.from' deve essere in (0,1], trovato " + from + " in " + jsonPath);
+		}
+		if (to <= 0 || to > 1) {
+			throw new LinkageUnitConfigException("'range.to' deve essere in (0,1], trovato " + to + " in " + jsonPath);
+		}
+		if (step <= 0) {
+			throw new LinkageUnitConfigException("'range.step' deve essere positivo, trovato " + step + " in " + jsonPath);
+		}
+		if (to <= from) {
+			throw new LinkageUnitConfigException(
+					"'range.to' deve essere maggiore di 'range.from' (" + from + "), trovato " + to + " in " + jsonPath);
+		}
+		final long steps = Math.round((to - from) / step);
+		if (steps > MAX_RANGE_STEPS) {
+			throw new LinkageUnitConfigException("'range' produce troppe soglie (" + (steps + 1) + ", massimo "
+					+ (MAX_RANGE_STEPS + 1) + "): aumenta 'range.step' o restringi l'intervallo in " + jsonPath);
+		}
+		return SimilarityThresholdSpec.range(from, to, step);
 	}
 
 	/**
@@ -290,11 +346,18 @@ public final class LinkageUnitConfigLoader {
 	}
 
 	/**
-	 * @return {@code true} se {@code persistence.enabled} è specificato esplicitamente
-	 *         nel JSON, altrimenti il default: {@code true} per ogni metodo diverso da
-	 *         MCL (comportamento storico invariato), {@code false} per MCL.
+	 * @return {@code false} incondizionatamente con {@code similarityThreshold: "range"}
+	 *         (solo testing: persistenza e incremento non vengono MAI applicati in questa
+	 *         modalita', indipendentemente da cosa scrive l'utente in {@code persistence.enabled}
+	 *         — cortocircuito prima di leggerlo). Altrimenti, {@code persistence.enabled} se
+	 *         specificato esplicitamente nel JSON, altrimenti il default: {@code true} per ogni
+	 *         metodo diverso da MCL (comportamento storico invariato), {@code false} per MCL.
 	 */
-	private static boolean resolvePersistenceEnabled(PersistenceJsonConfig persistence, ClusteringMethod method) {
+	private static boolean resolvePersistenceEnabled(PersistenceJsonConfig persistence, ClusteringMethod method,
+			SimilarityThresholdSpec thresholdSpec) {
+		if (thresholdSpec.isRange()) {
+			return false;
+		}
 		if (persistence != null && persistence.getEnabled() != null) {
 			return persistence.getEnabled();
 		}
