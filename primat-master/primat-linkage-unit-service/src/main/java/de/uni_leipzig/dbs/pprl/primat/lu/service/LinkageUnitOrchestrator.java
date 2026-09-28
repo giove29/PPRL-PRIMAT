@@ -284,6 +284,8 @@ public class LinkageUnitOrchestrator {
 		System.out.println();
 
 		final MultiSourceLinkage linkage = new MultiSourceLinkage();
+		linkage.setOnClusteringFinished(
+				() -> MultiSourceLinkage.phaseLine("Clustering", linkage.getLastClusteringElapsedNanos() / 1_000_000));
 		final BlockingEvaluationResult blockingEval = linkage.evaluateBlocking(input, blocker);
 		System.out.printf(Locale.ROOT,
 				"  Blocking (costante per tutte le soglie): coppie candidate %d | RR %.0f%% | PC %.0f%% | PQ %.0f%%%n",
