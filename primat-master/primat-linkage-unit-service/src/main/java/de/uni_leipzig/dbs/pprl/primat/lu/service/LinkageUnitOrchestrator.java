@@ -282,30 +282,27 @@ public class LinkageUnitOrchestrator {
 		System.out.println("  soglie:   " + thresholds);
 		System.out.println("  ATTENZIONE: nessuno schema di clustering viene salvato su file/DB in questa modalita'.");
 		System.out.println();
-		System.out.printf(Locale.ROOT, "  %-7s %8s %8s %8s %8s %8s %8s %8s %8s %10s%n", "soglia", "cluster", "TP",
-				"FP", "FN", "GT", "recall", "precis.", "F1", "tempo(ms)");
 
 		final MultiSourceLinkage linkage = new MultiSourceLinkage();
+		final BlockingEvaluationResult blockingEval = linkage.evaluateBlocking(input, blocker);
+		System.out.printf(Locale.ROOT,
+				"  Blocking (costante per tutte le soglie): coppie candidate %d | RR %.0f%% | PC %.0f%% | PQ %.0f%%%n",
+				blockingEval.getCandidatePairs(), blockingEval.getReductionRatio() * 100,
+				blockingEval.getPairsCompleteness() * 100, blockingEval.getPairsQuality() * 100);
 		final List<RangeIterationResult> results = new ArrayList<>();
 		double bestF1 = -1d;
 		double bestThreshold = Double.NaN;
-		boolean blockingPrinted = false;
 		for (final double t : thresholds) {
+			System.out.printf(Locale.ROOT, "%n  SOGLIA: %.2f%n", t);
 			final LinkageOutcome outcome = dispatchStrategy(method, input, blocker, SimilarityThresholdSpec.fixed(t),
 					linkage, null);
 			results.add(new RangeIterationResult(t, outcome));
+			System.out.printf(Locale.ROOT, "  %-7s %8s %8s %8s %8s %8s %8s %8s %8s %10s%n", "soglia", "cluster", "TP",
+					"FP", "FN", "GT", "recall", "precis.", "F1", "tempo(ms)");
 			System.out.printf(Locale.ROOT, "  %-7.2f %8d %8d %8d %8d %8d %8.3f %8.3f %8.3f %10d%n", t,
 					outcome.getLinkTable().size(), outcome.getTruePositives(), outcome.getFalsePositives(),
 					outcome.getFalseNegatives(), outcome.getTotalTrueMatches(), outcome.getRecall(),
 					outcome.getPrecision(), outcome.getFMeasure(), linkage.getLastClusteringElapsedNanos() / 1_000_000);
-			if (!blockingPrinted) {
-				final BlockingEvaluationResult blockingEval = linkage.getLastBlockingEvaluation();
-				System.out.printf(Locale.ROOT,
-						"  Blocking (costante per tutte le soglie): coppie candidate %d | RR %.0f%% | PC %.0f%% | PQ %.0f%%%n",
-						blockingEval.getCandidatePairs(), blockingEval.getReductionRatio() * 100,
-						blockingEval.getPairsCompleteness() * 100, blockingEval.getPairsQuality() * 100);
-				blockingPrinted = true;
-			}
 			if (outcome.getFMeasure() > bestF1) {
 				bestF1 = outcome.getFMeasure();
 				bestThreshold = t;

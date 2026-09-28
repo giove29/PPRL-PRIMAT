@@ -230,9 +230,10 @@ public class LinkageUnitConfig {
 		sb.append("RBF size (informativo): ").append(rbfSize != null ? rbfSize + " bit" : "non impostato").append('\n');
 		sb.append("Blocking (JaccardLSH):  keySize=").append(lshKeySize).append(", keys=").append(lshKeys)
 				.append(", valueRange=").append(lshValueRange).append(", seed=").append(lshSeed).append('\n');
+		final String rangeTestingDisabled = "DISABILITATA (modalita' TEST range: nessun DB/CSV/incremento)";
 		sb.append("Persistenza:            ");
 		if (thresholdSpec.isRange()) {
-			sb.append("DISABILITATA (modalita' TEST range: nessun DB/CSV/incremento)");
+			sb.append(rangeTestingDisabled);
 		}
 		else if (persistenceEnabled) {
 			sb.append("DB (url=").append(dbUrl).append(", user=").append(dbUser).append(')');
@@ -244,8 +245,15 @@ public class LinkageUnitConfig {
 		sb.append("MQTT tuning:            brokerConnectTimeout=").append(brokerConnectTimeoutSeconds)
 				.append("s, rbfCollectionTimeout=").append(rbfCollectionTimeoutSeconds)
 				.append("s, rbfRepublishInterval=").append(rbfRepublishIntervalSeconds).append("s\n");
-		sb.append("Debug:                  ").append(debug ? "On (istogramma similarita' -> "
-				+ SimilarityHistogramCsvWriter.DEFAULT_OUTPUT_PATH + ")" : "Off").append('\n');
+		sb.append("Debug:                  ");
+		if (thresholdSpec.isRange()) {
+			sb.append(rangeTestingDisabled);
+		}
+		else {
+			sb.append(debug ? "On (istogramma similarita' -> " + SimilarityHistogramCsvWriter.DEFAULT_OUTPUT_PATH + ")"
+					: "Off");
+		}
+		sb.append('\n');
 		sb.append("Party:\n");
 		for (final Party party : parties) {
 			sb.append("  - ").append(party.getName()).append(" [duplicateFree=").append(party.isDuplicateFree())

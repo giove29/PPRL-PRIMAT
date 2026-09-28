@@ -460,12 +460,7 @@ public class MultiSourceLinkage {
 	private List<LinkedPair<Record>> classifyAndCluster(Map<Party, Collection<Record>> input, Blocker blocker,
 			MultipartiteClusteringStrategy clusterer, SimilarityThresholdSpec thresholdSpec) {
 		long phaseStart = System.nanoTime();
-		final Collection<Block> blocks = blocker.getBlocks(input);
-		final long maxComparisons = PerformanceMetrics.getMaxComparisons(input, ComparisonStrategy.DIRTY_AWARE);
-		lastMaxComparisons = maxComparisons;
-		final long expectedMatches = countGroundTruthMatches(input);
-		lastBlockingEvaluation = new BlockingEvaluator(new IdEqualityTrueMatchChecker())
-				.evaluate(blocks, maxComparisons, expectedMatches);
+		lastBlockingEvaluation = computeBlockingEvaluation(input, blocker);
 		phaseLine("Blocking (valutazione)", elapsedMillis(phaseStart));
 
 		final double threshold;
@@ -539,6 +534,29 @@ public class MultiSourceLinkage {
 	 */
 	public BlockingEvaluationResult getLastBlockingEvaluation() {
 		return lastBlockingEvaluation;
+	}
+
+	/**
+	 * Valuta solo il blocking (RR/PC/PQ), senza classificare né clusterizzare
+	 * nulla: la stessa identica valutazione che {@link #classifyAndCluster}
+	 * calcolerebbe comunque ad ogni chiamata (non dipende dalla soglia, quindi è
+	 * costante per tutte le iterazioni di un run in modalità {@code "range"}).
+	 * Usata da
+	 * {@link de.uni_leipzig.dbs.pprl.primat.lu.service.LinkageUnitOrchestrator#runRangeBenchmark()}
+	 * per stampare questa riga una sola volta, prima del loop sulle soglie,
+	 * invece che dopo la prima iterazione.
+	 */
+	public BlockingEvaluationResult evaluateBlocking(Map<Party, Collection<Record>> input, Blocker blocker) {
+		lastBlockingEvaluation = computeBlockingEvaluation(input, blocker);
+		return lastBlockingEvaluation;
+	}
+
+	private BlockingEvaluationResult computeBlockingEvaluation(Map<Party, Collection<Record>> input, Blocker blocker) {
+		final Collection<Block> blocks = blocker.getBlocks(input);
+		final long maxComparisons = PerformanceMetrics.getMaxComparisons(input, ComparisonStrategy.DIRTY_AWARE);
+		lastMaxComparisons = maxComparisons;
+		final long expectedMatches = countGroundTruthMatches(input);
+		return new BlockingEvaluator(new IdEqualityTrueMatchChecker()).evaluate(blocks, maxComparisons, expectedMatches);
 	}
 
 	private LinkageOutcome buildOutcome(Map<Party, Collection<Record>> input,
