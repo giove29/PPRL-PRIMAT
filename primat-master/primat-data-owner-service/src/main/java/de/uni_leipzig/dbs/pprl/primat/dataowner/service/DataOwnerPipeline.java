@@ -6,8 +6,8 @@ package de.uni_leipzig.dbs.pprl.primat.dataowner.service;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import de.uni_leipzig.dbs.pprl.primat.common.extraction.FeatureExtractor;
@@ -29,24 +29,20 @@ import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hashing.Ran
 import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.FieldNormalizer;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.NormalizeDefinition;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.Preprocessor;
-import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.normalizing.AccentRemover;
-import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.normalizing.NonDigitRemover;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.normalizing.NormalizerChain;
-import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.normalizing.SpecialCharacterRemover;
-import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.normalizing.SubstringNormalizer;
-import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.normalizing.TrimNormalizer;
-import de.uni_leipzig.dbs.pprl.primat.dataowner.preprocessing.normalizing.UpperCaseNormalizer;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.ColumnConfig;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.ColumnRole;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.ConstantWeightEncodingJsonConfig;
+import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.PreprocessingStepFactory;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.io.RecordSource;
 
 /**
  * Pipeline locale del Data Owner: legge i record dalla {@link RecordSource}
  * configurata, li pre-processa (via {@link FieldNormalizer}/
- * {@link NormalizerChain} gia' esistenti, scelta in base al
- * {@code dataType} testuale/numerico di ciascuna colonna QID dichiarato nel
- * JSON di configurazione) e li codifica in un unico Record-level Bloom
+ * {@link NormalizerChain} gia' esistenti, catena esplicita per ciascuna
+ * colonna QID dichiarata nel campo {@code preprocessing} del JSON di
+ * configurazione, vedi {@link PreprocessingStepFactory}) e li codifica in un
+ * unico Record-level Bloom
  * Filter (RBF) per record, riusando {@link BloomFilterEncoder} con una sola
  * {@link BloomFilterDefinition} che unisce gli estrattori di tutti gli
  * attributi — stesso pattern di {@code DataSources.getEncodedNCVR}, ma
@@ -72,8 +68,8 @@ public class DataOwnerPipeline {
 	/**
 	 * Costruisce lo schema di lettura a partire da {@link DataOwnerConfig#getColumns()}:
 	 * un {@code NonQidAttributeType} per le colonne di ruolo PARTY/GLOBAL_ID/ID,
-	 * un {@code QidAttributeType.STRING} per ogni colonna QID (il {@code dataType}
-	 * testuale/numerico dichiarato nel JSON sceglie solo la
+	 * un {@code QidAttributeType.STRING} per ogni colonna QID (la catena
+	 * {@code preprocessing} dichiarata nel JSON sceglie solo la
 	 * {@link NormalizerChain} in {@link #buildPreprocessor()}, non il tipo di
 	 * attributo: l'estrazione trigram-based dell'RBF opera comunque sulla
 	 * rappresentazione stringa).
@@ -94,6 +90,11 @@ public class DataOwnerPipeline {
 					builder.add(column.getIndex(), NonQidAttributeType.ID);
 					break;
 				case QID:
+					if (column.getIndex() != null) {
+						builder.add(column.getIndex(), QidAttributeType.STRING, column.getName());
+					}
+					break;
+				case RAW:
 					builder.add(column.getIndex(), QidAttributeType.STRING, column.getName());
 					break;
 			}
@@ -103,10 +104,11 @@ public class DataOwnerPipeline {
 
 	/**
 	 * Normalizzazione degli attributi QID prima dell'estrazione delle feature
-	 * per l'RBF, una {@link NormalizerChain} per colonna scelta in base al suo
-	 * {@code dataType}: testuale (trim, maiuscolo, rimozione accenti e
-	 * caratteri speciali, troncamento a 20 caratteri) o numerico (trim e
-	 * rimozione di caratteri non numerici).
+	 * per l'RBF, una {@link NormalizerChain} per colonna costruita dalla catena
+	 * {@code preprocessing} esplicitamente dichiarata nel JSON di
+	 * configurazione (vedi {@link PreprocessingStepFactory#build}). Opera sul
+	 * {@link Record} gia' ristrutturato da {@link #applyFieldTransforms}, quindi
+	 * vede solo le colonne QID finali (fisiche + virtuali).
 	 *
 	 * @return il preprocessor da applicare ai record letti
 	 */
@@ -116,29 +118,50 @@ public class DataOwnerPipeline {
 		// Record.getQidAttribute(int) indicizza per posizione nella lista di QID
 		// attribute effettivamente presenti nel record, non per indice di colonna
 		// del CSV originale (vedi il TODO "ID Column problem" in Record.java) — la
-		// posizione e' quindi l'ordine crescente di indice colonna tra le sole
-		// colonne QID, coerente con come NamedRecordSchemaConfiguration.Builder
-		// le accumula in una SortedMap.
-		final List<ColumnConfig> qidColumnsByIndex = config.getColumns().stream()
-				.filter(column -> column.getRole() == ColumnRole.QID)
-				.sorted(Comparator.comparingInt(ColumnConfig::getIndex))
-				.collect(Collectors.toList());
+		// posizione e' quindi l'ordine di PreprocessingStepFactory.resolveFinalQidOrder(...),
+		// la stessa usata per ricostruire il Record in applyFieldTransforms e per
+		// buildRbfDefinition() — le tre viste devono restare sincronizzate.
+		final List<ColumnConfig> finalQidColumns = resolveFinalQidColumns();
 
-		for (int position = 0; position < qidColumnsByIndex.size(); position++) {
-			final ColumnConfig column = qidColumnsByIndex.get(position);
-			normalizeDefinition.setNormalizer(position, buildChainFor(column));
+		for (int position = 0; position < finalQidColumns.size(); position++) {
+			normalizeDefinition.setNormalizer(position, buildChainFor(finalQidColumns.get(position)));
 		}
 		return new FieldNormalizer(normalizeDefinition);
 	}
 
 	private NormalizerChain buildChainFor(ColumnConfig column) {
-		switch (column.getDataType()) {
-			case NUMERIC:
-				return new NormalizerChain(new TrimNormalizer(), new NonDigitRemover());
-			case TEXT:
-			default:
-				return new NormalizerChain(new TrimNormalizer(), new UpperCaseNormalizer(), new AccentRemover(),
-						new SpecialCharacterRemover(), new SubstringNormalizer(0, 20));
+		return PreprocessingStepFactory.build(column.getPreprocessing());
+	}
+
+	/**
+	 * @return le colonne QID finali (fisiche con {@code index}, seguite dalle
+	 *         virtuali il cui primo step {@code preprocessing} e' MERGE/SPLIT),
+	 *         nell'ordine di {@link PreprocessingStepFactory#resolveFinalQidOrder}
+	 *         — unica fonte di verita' condivisa da {@link #buildPreprocessor()},
+	 *         {@link #buildRbfDefinition()} e {@link #applyFieldTransforms}.
+	 */
+	private List<ColumnConfig> resolveFinalQidColumns() {
+		final Map<String, ColumnConfig> qidColumnsByName = config.getColumns().stream()
+				.filter(column -> column.getRole() == ColumnRole.QID)
+				.collect(Collectors.toMap(ColumnConfig::getName, column -> column));
+		return PreprocessingStepFactory.resolveFinalQidOrder(config.getColumns()).stream()
+				.map(qidColumnsByName::get)
+				.collect(Collectors.toList());
+	}
+
+	/**
+	 * Esegue, su ogni record appena letto e prima di qualunque normalizzazione
+	 * per-colonna, il primo step MERGE/SPLIT di ciascuna colonna QID virtuale —
+	 * ristruttura lo schema QID (nomi/numero di colonne) mantenendo intatti
+	 * party/id/global-id. Senza colonne virtuali e' un no-op strutturale
+	 * (l'ordine finale coincide con quello fisico), eseguito comunque per
+	 * uniformita' di codice.
+	 */
+	private void applyFieldTransforms(List<Record> records) {
+		final List<String> physicalOrder = PreprocessingStepFactory.resolvePhysicalOrder(config.getColumns());
+		final List<String> finalOrder = PreprocessingStepFactory.resolveFinalQidOrder(config.getColumns());
+		for (final Record record : records) {
+			PreprocessingStepFactory.applyFieldTransforms(record, config.getColumns(), physicalOrder, finalOrder);
 		}
 	}
 
@@ -152,16 +175,19 @@ public class DataOwnerPipeline {
 	 * {@code TrigramExtractor} condiviso), cosi' da poter applicare soglie CWE
 	 * diverse per attributo; il missing-value handling (bypass dei valori
 	 * vuoti verso {@code MissingValueBucketing}) e' propagato a livello di
-	 * RBF/estrattore, non nell'estrattore stesso.
+	 * RBF/estrattore, non nell'estrattore stesso. La posizione di ciascuna
+	 * colonna e' risolta localmente da {@link #resolveFinalQidColumns()}
+	 * (invece di {@code ExtractorDefinition.setColumnsByName}, che dipende dal
+	 * registro globale mutabile {@code RecordSchema.INSTANCE} - non affidabile
+	 * per le colonne QID virtuali, che quel registro non conosce).
 	 *
 	 * @return la definizione di codifica RBF
 	 */
 	private BloomFilterDefinition buildRbfDefinition() {
 		final List<BloomFilterExtractorDefinition> extractorDefinitions = new ArrayList<>();
-		for (final ColumnConfig column : config.getColumns()) {
-			if (column.getRole() != ColumnRole.QID) {
-				continue;
-			}
+		final List<ColumnConfig> finalQidColumns = resolveFinalQidColumns();
+		for (int position = 0; position < finalQidColumns.size(); position++) {
+			final ColumnConfig column = finalQidColumns.get(position);
 			final boolean cweEnabled = column.isConstantWeightEncodingEnabled();
 			final ConstantWeightEncodingJsonConfig cwe = column.getConstantWeightEncoding();
 			final int minTrigrams = cweEnabled ? cwe.getMinTrigrams() : 0;
@@ -170,7 +196,7 @@ public class DataOwnerPipeline {
 					column.getSaltOrDefault(), cweEnabled, minTrigrams, maxTrigrams);
 
 			final BloomFilterExtractorDefinition extractorDefinition = new BloomFilterExtractorDefinition();
-			extractorDefinition.setColumnsByName(column.getName());
+			extractorDefinition.setColumns(position);
 			extractorDefinition.setExtractors(featureExtractor);
 			extractorDefinition.setNumberOfHashFunctions(column.getHashFunctionsOrDefault());
 			extractorDefinition.setSalt(column.getSaltOrDefault());
@@ -178,7 +204,8 @@ public class DataOwnerPipeline {
 			extractorDefinitions.add(extractorDefinition);
 		}
 
-		final HashingMethod hashing = new RandomHashing(config.getBloomFilterLength(), RandomFactory.SECURE_RANDOM);
+		final HashingMethod hashing = new RandomHashing(config.getBloomFilterLength(), config.getHmacKey(),
+				RandomFactory.SECURE_RANDOM);
 
 		final BloomFilterDefinition rbfDefinition = new BloomFilterDefinition();
 		rbfDefinition.setName("RBF");
@@ -204,6 +231,11 @@ public class DataOwnerPipeline {
 		prefixRecordIds(records);
 		if (config.isDebug()) {
 			printFirstRecords("estratti dalla sorgente dati", records);
+		}
+
+		applyFieldTransforms(records);
+		if (config.isDebug()) {
+			printFirstRecords("dopo le trasformazioni di schema (MERGE/SPLIT)", records);
 		}
 
 		buildPreprocessor().preprocess(records);

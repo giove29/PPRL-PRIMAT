@@ -7,13 +7,14 @@ package de.uni_leipzig.dbs.pprl.primat.lu.service.config;
 /**
  * Parametri del blocking JaccardLSH (MinHash), tutti opzionali: default in
  * {@link LinkageUnitConfigLoader} pari all'hardcoded odierno di
- * {@code LinkageUnitOrchestrator} ({@code keySize=4, keys=30, valueRange=1024, seed=42}).
+ * {@code LinkageUnitOrchestrator} ({@code keySize=4, keys=30, seed=42}). Il
+ * range dei valori hash del MinHash non e' piu' configurabile qui: coincide
+ * sempre con {@code rbfSize} (vedi {@code LinkageUnitConfig#getRbfSize()}).
  */
 public class JaccardLshJsonConfig {
 
 	private Integer keySize;
 	private Integer keys;
-	private Integer valueRange;
 	private Long seed;
 
 	public Integer getKeySize() {
@@ -22,10 +23,6 @@ public class JaccardLshJsonConfig {
 
 	public Integer getKeys() {
 		return keys;
-	}
-
-	public Integer getValueRange() {
-		return valueRange;
 	}
 
 	public Long getSeed() {

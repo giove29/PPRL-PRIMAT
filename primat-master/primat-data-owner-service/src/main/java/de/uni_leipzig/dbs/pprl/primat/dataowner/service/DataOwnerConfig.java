@@ -13,6 +13,7 @@ import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.ColumnRole;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.DataOwnerConfigLoader;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.DataSourceType;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.DbSourceConfig;
+import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.PreprocessingStepFactory;
 
 /**
  * Configurazione locale di un Data Owner Service: mai trasmessa in rete,
@@ -39,6 +40,7 @@ public class DataOwnerConfig {
 	private final boolean missingValueHandlingEnabled;
 	private final List<String> missingValueAnchorPriority;
 	private final List<String> hardeningDescriptions;
+	private final String hmacKey;
 
 	/**
 	 * Costruito esclusivamente da {@link DataOwnerConfigLoader} dopo la
@@ -65,11 +67,14 @@ public class DataOwnerConfig {
 	 *                                     vuota se {@code missingValueHandlingEnabled} e' {@code false}
 	 * @param hardeningDescriptions       descrizione leggibile di ciascuno step della catena di hardening
 	 *                                     (solo per {@link #describe()}), vuota se nessun hardening e' configurato
+	 * @param hmacKey                     chiave HMAC usata da {@code RandomHashing} per l'hashing dei bit
+	 *                                     dell'RBF, {@code null}/vuota per usare il {@code DEFAULT_KEY} di
+	 *                                     fallback; configurabile via la SMU (funzionalita' "Configura i DO")
 	 */
 	public DataOwnerConfig(String party, DataSourceType dataSourceType, String csvFilePath, boolean csvHasHeader,
 			char csvDelimiter, DbSourceConfig dbConfig, String mqttBrokerUrl, List<ColumnConfig> columns, int bloomFilterLength,
 			BloomFilterHardener hardener, boolean debug, boolean missingValueHandlingEnabled,
-			List<String> missingValueAnchorPriority, List<String> hardeningDescriptions) {
+			List<String> missingValueAnchorPriority, List<String> hardeningDescriptions, String hmacKey) {
 		this.party = party;
 		this.dataSourceType = dataSourceType;
 		this.csvFilePath = csvFilePath;
@@ -85,6 +90,7 @@ public class DataOwnerConfig {
 		this.missingValueHandlingEnabled = missingValueHandlingEnabled;
 		this.missingValueAnchorPriority = missingValueAnchorPriority;
 		this.hardeningDescriptions = hardeningDescriptions;
+		this.hmacKey = hmacKey;
 	}
 
 	public String getParty() {
@@ -137,17 +143,27 @@ public class DataOwnerConfig {
 	}
 
 	/**
+	 * @return la chiave HMAC usata da {@code RandomHashing} per derivare le
+	 *         posizioni di bit dell'RBF, {@code null}/vuota se non configurata
+	 *         (in tal caso {@code RandomHashing} ricade sul proprio
+	 *         {@code DEFAULT_KEY}). Mai trasmessa in rete.
+	 */
+	public String getHmacKey() {
+		return hmacKey;
+	}
+
+	/**
 	 * @return la dimensione reale, in bit, dell'RBF dopo l'hardening (es. dimezzata
 	 *         rispetto a {@link #getBloomFilterLength()} se {@code hardener} è uno
 	 *         {@code XorFolder}) — il valore dichiarato con certezza dalla
 	 *         configurazione stessa, non dedotto a posteriori dal contenuto di un
 	 *         bitset ricevuto (che può sottostimarlo se i byte finali sono a zero).
-	 *         Trasmesso alla Linkage Unit in {@code RbfPayload.effectiveRbfBitLength}
-	 *         in chiaro (un intero non e' un dato sensibile), usato per la
-	 *         guardia sulla coerenza con rbfSize/valueRange (vedi
-	 *         {@code LinkageUnitOrchestrator.collectRbf}) — per il confronto
-	 *         piu' severo prima di ogni persistenza, che copre anche cambi di
-	 *         salt/hashFunctions/CWE, vedi {@link #computeConfigHash()}.
+	 *         Non e' piu' trasmessa alla Linkage Unit (che usa il proprio
+	 *         {@code rbfSize}, spinto dalla SMU, come unica fonte di verita'):
+	 *         resta utile solo per lo smoke-test locale dopo un reconfigure (vedi
+	 *         {@code DataOwnerService}) e per debug/{@link #describe()}. Per il
+	 *         confronto piu' severo prima di ogni persistenza, che copre anche
+	 *         cambi di salt/hashFunctions/CWE, vedi {@link #computeConfigHash()}.
 	 */
 	public int computeEffectiveRbfBitLength() {
 		return hardener.resultingLength(bloomFilterLength);
@@ -158,7 +174,7 @@ public class DataOwnerConfig {
 	 *         {@link DeterministicHashing#digestBase64(String)}) dell'intera
 	 *         configurazione di encoding di questo party: lunghezza RBF,
 	 *         hardening, missing-value handling, e per ogni colonna QID
-	 *         dataType/hashFunctions/salt/CWE/missingValueTokenCount. La
+	 *         preprocessing/hashFunctions/salt/CWE/missingValueTokenCount. La
 	 *         stringa in chiaro che genera il digest non lascia mai questo
 	 *         metodo: solo il suo hash viene trasmesso alla Linkage Unit
 	 *         ({@code RbfPayload.configHash}), che puo' cosi' verificare se
@@ -181,7 +197,7 @@ public class DataOwnerConfig {
 				continue;
 			}
 			sb.append(";col=").append(column.getName())
-					.append(",dataType=").append(column.getDataType())
+					.append(",preprocessing=").append(PreprocessingStepFactory.describe(column.getPreprocessing()))
 					.append(",hashFunctions=").append(column.getHashFunctionsOrDefault())
 					.append(",salt=").append(column.getSaltOrDefault())
 					.append(",cwe=");
@@ -254,7 +270,7 @@ public class DataOwnerConfig {
 				continue;
 			}
 			sb.append("  - ").append(column.getName())
-					.append(" [dataType=").append(column.getDataType())
+					.append(" [preprocessing=").append(PreprocessingStepFactory.describe(column.getPreprocessing()))
 					.append(", hashFunctions=").append(column.getHashFunctionsOrDefault())
 					.append(", salt=\"").append(column.getSaltOrDefault()).append('"')
 					.append(", CWE=");

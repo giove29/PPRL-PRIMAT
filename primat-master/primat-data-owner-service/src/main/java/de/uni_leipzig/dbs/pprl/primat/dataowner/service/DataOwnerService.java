@@ -4,8 +4,12 @@
  */
 package de.uni_leipzig.dbs.pprl.primat.dataowner.service;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -14,6 +18,8 @@ import java.util.stream.Collectors;
 import org.eclipse.paho.client.mqttv3.MqttException;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.DataOwnerConfigException;
@@ -24,6 +30,8 @@ import de.uni_leipzig.dbs.pprl.primat.dataowner.service.io.JdbcRecordSource;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.io.RecordSource;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttClientWrapper;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttTopics;
+import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.ConfigAck;
+import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.ConfigPush;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.RbfCodec;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.RbfPayload;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.StartCommand;
@@ -39,7 +47,17 @@ import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.StatusMessage;
  */
 public class DataOwnerService {
 
-	private final DataOwnerConfig config;
+	/**
+	 * Non piu' {@code final}: una {@link ConfigPush} accettata dalla SMU
+	 * sostituisce l'istanza con una ricaricata da {@link DataOwnerConfigLoader}.
+	 * {@code volatile} basta (nessuna sincronizzazione ulteriore necessaria):
+	 * un solo scrittore (il thread di {@link #configExecutor}), letture con
+	 * uno snapshot locale a inizio metodo in {@link #handleStartCommand} e
+	 * {@link #handleConfigPush} cosi' un'esecuzione non vede la config
+	 * cambiare a meta' strada.
+	 */
+	private volatile DataOwnerConfig config;
+	private final Path configPath;
 	private final MqttClientWrapper client;
 	private final Gson gson = new Gson();
 	/**
@@ -61,14 +79,29 @@ public class DataOwnerService {
 		thread.setDaemon(true);
 		return thread;
 	});
+	/**
+	 * Executor dedicato e separato da {@link #commandExecutor}: un reconfigure
+	 * spinto dalla SMU non deve attendere in coda dietro un run in corso (ne'
+	 * viceversa) — i due canali MQTT sono indipendenti — ma resta comunque
+	 * serializzato rispetto ad altri reconfigure tramite questo thread singolo.
+	 */
+	private final ExecutorService configExecutor = Executors.newSingleThreadExecutor(runnable -> {
+		final Thread thread = new Thread(runnable, "data-owner-config-worker");
+		thread.setDaemon(true);
+		return thread;
+	});
 
 	/**
-	 * @param config configurazione locale del Data Owner (party, sorgente dati,
-	 *               endpoint broker)
+	 * @param config     configurazione locale del Data Owner (party, sorgente dati,
+	 *                   endpoint broker)
+	 * @param configPath percorso del file JSON da cui {@code config} e' stata
+	 *                   caricata: riusato per riscrivere/ricaricare il file a
+	 *                   ogni {@link ConfigPush} accettata dalla SMU
 	 * @throws MqttException se il client MQTT non può essere istanziato
 	 */
-	public DataOwnerService(DataOwnerConfig config) throws MqttException {
+	public DataOwnerService(DataOwnerConfig config, Path configPath) throws MqttException {
 		this.config = config;
+		this.configPath = configPath;
 		this.client = new MqttClientWrapper(config.getMqttBrokerUrl(), config.getMqttClientId());
 	}
 
@@ -87,7 +120,13 @@ public class DataOwnerService {
 					StartCommand.class);
 			commandExecutor.submit(() -> handleStartCommand(command));
 		});
-		System.out.println("[" + config.getParty() + "] in ascolto su " + MqttTopics.commandTopic(config.getParty()));
+		client.subscribe(MqttTopics.configTopic(config.getParty()), (topic, message) -> {
+			final ConfigPush push = gson.fromJson(new String(message.getPayload(), StandardCharsets.UTF_8),
+					ConfigPush.class);
+			configExecutor.submit(() -> handleConfigPush(push));
+		});
+		System.out.println("[" + config.getParty() + "] in ascolto su " + MqttTopics.commandTopic(config.getParty())
+				+ " e " + MqttTopics.configTopic(config.getParty()));
 	}
 
 	/**
@@ -99,49 +138,110 @@ public class DataOwnerService {
 	 * @param command comando di avvio ricevuto dalla Linkage Unit
 	 */
 	private void handleStartCommand(StartCommand command) {
+		final DataOwnerConfig cfg = this.config;
 		final String runId = command.getRunId();
-		System.out.println("[" + config.getParty() + "] comando ricevuto per run " + runId);
+		System.out.println("[" + cfg.getParty() + "] comando ricevuto per run " + runId);
 		try {
-			final RecordSource source = newRecordSource();
-			final List<Record> encodedRecords = new DataOwnerPipeline(source, config).run();
+			final RecordSource source = newRecordSource(cfg);
+			final List<Record> encodedRecords = new DataOwnerPipeline(source, cfg).run();
 
 			final List<RbfPayload.RbfRecord> rbfRecords = encodedRecords.stream()
 					.map(RbfCodec::toRbfRecord)
 					.collect(Collectors.toList());
 
-			final RbfPayload payload = new RbfPayload(runId, config.getParty(), rbfRecords,
-					config.computeEffectiveRbfBitLength(), config.computeConfigHash());
-			client.publish(MqttTopics.rbfTopic(runId, config.getParty()), gson.toJson(payload));
+			final RbfPayload payload = new RbfPayload(runId, cfg.getParty(), rbfRecords, cfg.computeConfigHash());
+			client.publish(MqttTopics.rbfTopic(runId, cfg.getParty()), gson.toJson(payload));
 
-			client.publish(MqttTopics.statusTopic(runId, config.getParty()),
-					gson.toJson(new StatusMessage(runId, config.getParty(), "DONE", rbfRecords.size() + " record")));
-			System.out.println("[" + config.getParty() + "] RBF pubblicato (" + rbfRecords.size() + " record) su "
-					+ MqttTopics.rbfTopic(runId, config.getParty()));
+			client.publish(MqttTopics.statusTopic(runId, cfg.getParty()),
+					gson.toJson(new StatusMessage(runId, cfg.getParty(), "DONE", rbfRecords.size() + " record")));
+			System.out.println("[" + cfg.getParty() + "] RBF pubblicato (" + rbfRecords.size() + " record) su "
+					+ MqttTopics.rbfTopic(runId, cfg.getParty()));
 		} catch (Exception e) {
-			System.err.println("[" + config.getParty() + "] errore durante l'elaborazione del run " + runId + ":");
+			System.err.println("[" + cfg.getParty() + "] errore durante l'elaborazione del run " + runId + ":");
 			e.printStackTrace();
 			try {
-				client.publish(MqttTopics.statusTopic(runId, config.getParty()),
-						gson.toJson(new StatusMessage(runId, config.getParty(), "FAILED", e.getMessage())));
+				client.publish(MqttTopics.statusTopic(runId, cfg.getParty()),
+						gson.toJson(new StatusMessage(runId, cfg.getParty(), "FAILED", e.getMessage())));
 			} catch (MqttException publishFailure) {
-				System.err.println("[" + config.getParty() + "] impossibile pubblicare lo stato di errore: "
+				System.err.println("[" + cfg.getParty() + "] impossibile pubblicare lo stato di errore: "
 						+ publishFailure.getMessage());
 			}
 		}
 	}
 
-	private RecordSource newRecordSource() {
-		switch (config.getDataSourceType()) {
+	/**
+	 * Fonde {@link ConfigPush#getConfigJson()} (chiavi {@code columns}/
+	 * {@code bloomFilter}/{@code missingValueHandling}/{@code hmacKey}, gia'
+	 * risolte dalla SMU) dentro il file JSON locale, sovrascrivendo solo quelle
+	 * chiavi — identita' di party/broker/sorgente dati restano quelle locali,
+	 * mai spedite dalla SMU. Scrive su un file temporaneo, valida con
+	 * {@link DataOwnerConfigLoader#load} + uno smoke-test (costruzione
+	 * dell'hardener e calcolo di {@code computeEffectiveRbfBitLength()}/
+	 * {@code computeConfigHash()}), e solo se tutto va a buon fine sostituisce
+	 * il file reale e la config live; altrimenti pubblica un {@link ConfigAck}
+	 * di errore senza toccare ne' il file ne' la config in uso.
+	 */
+	private void handleConfigPush(ConfigPush push) {
+		final String party = config.getParty();
+		System.out.println("[" + party + "] push di configurazione ricevuta, versione " + push.getVersion());
+		final Path tempPath = configPath.resolveSibling(configPath.getFileName() + ".tmp");
+		try {
+			final JsonObject incoming = JsonParser.parseString(push.getConfigJson()).getAsJsonObject();
+			final String currentJson = Files.readString(configPath, StandardCharsets.UTF_8);
+			final JsonObject merged = JsonParser.parseString(currentJson).getAsJsonObject();
+			for (final String key : new String[] { "columns", "bloomFilter", "missingValueHandling", "hmacKey" }) {
+				if (incoming.has(key)) {
+					merged.add(key, incoming.get(key));
+				}
+			}
+			Files.writeString(tempPath, gson.toJson(merged), StandardCharsets.UTF_8);
+
+			final DataOwnerConfig newConfig = DataOwnerConfigLoader.load(tempPath);
+			// Smoke-test: esercita davvero la catena di hardening e il calcolo del
+			// digest una volta, invece di fidarsi del solo parsing/validazione JSON.
+			newConfig.computeEffectiveRbfBitLength();
+			newConfig.computeConfigHash();
+
+			Files.move(tempPath, configPath, StandardCopyOption.REPLACE_EXISTING);
+			this.config = newConfig;
+			client.publish(MqttTopics.configAckTopic(party),
+					gson.toJson(new ConfigAck(party, push.getVersion(), "OK", "configurazione applicata")));
+			System.out.println("[" + party + "] configurazione v" + push.getVersion() + " applicata con successo");
+		} catch (DataOwnerConfigException | IOException | MqttException | RuntimeException e) {
+			deleteQuietly(tempPath);
+			System.err.println("[" + party + "] push di configurazione v" + push.getVersion() + " rifiutata: "
+					+ e.getMessage());
+			try {
+				client.publish(MqttTopics.configAckTopic(party),
+						gson.toJson(new ConfigAck(party, push.getVersion(), "ERROR", e.getMessage())));
+			} catch (MqttException publishFailure) {
+				System.err.println("[" + party + "] impossibile pubblicare l'ack di errore: "
+						+ publishFailure.getMessage());
+			}
+		}
+	}
+
+	private static void deleteQuietly(Path path) {
+		try {
+			Files.deleteIfExists(path);
+		} catch (IOException ignored) {
+			// best-effort: un file temporaneo residuo non e' pericoloso, verra'
+			// sovrascritto dal prossimo tentativo.
+		}
+	}
+
+	private RecordSource newRecordSource(DataOwnerConfig cfg) {
+		switch (cfg.getDataSourceType()) {
 			case CSV:
-				return new CsvRecordSource(config.getCsvFilePath(), config.isCsvHasHeader(), config.getCsvDelimiter());
+				return new CsvRecordSource(cfg.getCsvFilePath(), cfg.isCsvHasHeader(), cfg.getCsvDelimiter());
 			case DB: {
-				final DbSourceConfig dbConfig = config.getDbConfig();
+				final DbSourceConfig dbConfig = cfg.getDbConfig();
 				return new JdbcRecordSource(dbConfig.getJdbcUrl(), dbConfig.getUsername(), dbConfig.getPassword(),
 						dbConfig.getTableName());
 			}
 			default:
 				throw new UnsupportedDataSourceException("Tipo di sorgente dati non gestito: "
-						+ config.getDataSourceType());
+						+ cfg.getDataSourceType());
 		}
 	}
 
@@ -174,9 +274,10 @@ public class DataOwnerService {
 			System.exit(1);
 		}
 
+		final Path configPath = Paths.get(args[0]);
 		final DataOwnerConfig config;
 		try {
-			config = DataOwnerConfigLoader.load(Paths.get(args[0]));
+			config = DataOwnerConfigLoader.load(configPath);
 		}
 		catch (DataOwnerConfigException e) {
 			// Errore di configurazione utente: messaggio leggibile, niente stack
@@ -188,7 +289,7 @@ public class DataOwnerService {
 
 		System.out.println(config.describe());
 
-		final DataOwnerService service = new DataOwnerService(config);
+		final DataOwnerService service = new DataOwnerService(config, configPath);
 		service.start();
 		service.awaitForever();
 	}

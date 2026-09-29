@@ -27,15 +27,14 @@
   "_range": "usata solo con 'similarityThreshold': \"range\" (mutuamente esclusiva con 'autoThreshold', quindi non attiva in questo esempio dato che sopra e' impostato auto_precision): { \"from\": 0.55, \"to\": 0.9, \"step\": 0.05 }, ogni campo indipendentemente opzionale (default from 0.5, to 0.9, step 0.1). Vincoli: from/to in (0,1], to > from, step > 0, al massimo 201 soglie risultanti.",
 
   "rbfSize": 1024,
-  "_rbfSize": "informativo: lunghezza attesa dell'RBF in bit (con XOR-fold lato Data Owner e' la lunghezza dopo il folding). Se manca, valueRange di default e' 1024; la LU avvisa se l'RBF ricevuto ha un'altra lunghezza.",
+  "_rbfSize": "OBBLIGATORIO: lunghezza autorevole dell'RBF in bit (con XOR-fold lato Data Owner e' la lunghezza dopo il folding), spinta dalla SMU. Unica fonte di verita' per il blocking (vedi _jaccardLsh sotto) e per l'autoconfigurazione della LU.",
 
   "blocking": {
     "jaccardLsh": {
       "keySize": 6,
       "keys": 20,
-      "valueRange": 1024,
       "seed": 42,
-      "_jaccardLsh": "keySize=r permutazioni MinHash per chiave, keys=b chiavi; probabilita' che una coppia con Jaccard s passi il blocking: 1-(1-s^r)^b (usata dalla soglia automatica). Default keySize 4, keys 30, valueRange = rbfSize (o 1024), seed 42. Cambiare keySize/keys con la persistenza attiva richiede di resettare il DB (db_reset_scripts/reset_db.py)."
+      "_jaccardLsh": "keySize=r permutazioni MinHash per chiave, keys=b chiavi; probabilita' che una coppia con Jaccard s passi il blocking: 1-(1-s^r)^b (usata dalla soglia automatica). Default keySize 4, keys 30, seed 42; il range dei valori hash del MinHash coincide sempre con 'rbfSize' (non piu' configurabile qui). Cambiare keySize/keys con la persistenza attiva richiede di resettare il DB (db_reset_scripts/reset_db.py)."
     }
   },
 

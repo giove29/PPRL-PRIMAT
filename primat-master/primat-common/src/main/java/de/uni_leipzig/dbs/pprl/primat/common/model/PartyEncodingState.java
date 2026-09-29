@@ -22,8 +22,10 @@ import javax.persistence.Id;
  * <p>Due campi indipendenti, entrambi deliberatamente **non** una descrizione
  * completa dell'encoding (niente salt/hashFunctions/CWE in chiaro, mai
  * trasmessi dal Data Owner in un sistema PPRL): {@link #getBitLength()} è un
- * intero in chiaro (non sensibile, serve anche altrove per la guardia
- * rbfSize/valueRange), {@link #getConfigHash()} è un digest non reversibile
+ * intero in chiaro (non sensibile), valorizzato con l'{@code rbfSize}
+ * autorevole della Linkage Unit (non più riportato dal Data Owner, che non lo
+ * invia più nel payload) — solo a scopo diagnostico nei messaggi di errore,
+ * il confronto decisivo resta {@link #getConfigHash()}, un digest non reversibile
  * dell'intera configurazione (cattura anche un cambio di salt/hashFunctions/
  * CWE che lasci invariata la lunghezza, cosa che il solo confronto sulla
  * lunghezza non può rilevare) — è quest'ultimo il confronto decisivo per

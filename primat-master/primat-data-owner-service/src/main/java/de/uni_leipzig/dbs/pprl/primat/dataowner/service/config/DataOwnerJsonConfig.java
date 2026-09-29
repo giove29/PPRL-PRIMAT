@@ -21,6 +21,7 @@ public class DataOwnerJsonConfig {
 	private List<ColumnConfig> columns;
 	private Boolean debug;
 	private MissingValueHandlingJsonConfig missingValueHandling;
+	private String hmacKey;
 
 	public String getParty() {
 		return party;
@@ -50,5 +51,10 @@ public class DataOwnerJsonConfig {
 	/** @return la sezione top-level {@code missingValueHandling}, o {@code null} se assente. */
 	public MissingValueHandlingJsonConfig getMissingValueHandling() {
 		return missingValueHandling;
+	}
+
+	/** @return la chiave HMAC per {@code RandomHashing}, {@code null} se assente (usa il default di fallback). */
+	public String getHmacKey() {
+		return hmacKey;
 	}
 }

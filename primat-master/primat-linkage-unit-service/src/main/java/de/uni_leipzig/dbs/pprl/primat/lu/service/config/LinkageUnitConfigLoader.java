@@ -51,7 +51,6 @@ public final class LinkageUnitConfigLoader {
 	private static final int MAX_RANGE_STEPS = 200;
 	private static final int DEFAULT_LSH_KEY_SIZE = 4;
 	private static final int DEFAULT_LSH_KEYS = 30;
-	private static final int DEFAULT_LSH_VALUE_RANGE = 1024;
 	private static final long DEFAULT_LSH_SEED = 42L;
 	private static final long DEFAULT_BROKER_CONNECT_TIMEOUT_SECONDS = 30L;
 	private static final long DEFAULT_RBF_COLLECTION_TIMEOUT_SECONDS = 30L;
@@ -109,7 +108,8 @@ public final class LinkageUnitConfigLoader {
 
 		final SimilarityThresholdSpec similarityThreshold = resolveSimilarityThreshold(raw.getSimilarityThreshold(),
 				raw.getAutoThreshold(), raw.getRange(), jsonPath);
-		final int[] lsh = resolveLsh(raw.getBlocking(), raw.getRbfSize(), jsonPath);
+		final int rbfSize = resolveRbfSize(raw.getRbfSize(), jsonPath);
+		final int[] lsh = resolveLsh(raw.getBlocking(), jsonPath);
 		final JaccardLshJsonConfig jaccardLsh = raw.getBlocking() != null ? raw.getBlocking().getJaccardLsh() : null;
 		final long lshSeed = jaccardLsh != null && jaccardLsh.getSeed() != null ? jaccardLsh.getSeed()
 				: DEFAULT_LSH_SEED;
@@ -143,7 +143,7 @@ public final class LinkageUnitConfigLoader {
 		final GlobalGreedyConfig globalGreedyConfig = resolveGlobalGreedyConfig(raw.getGlobalGreedy());
 		final ClipConfig clipConfig = resolveClipConfig(raw.getClip());
 
-		return new LinkageUnitConfig(parties, method, similarityThreshold, raw.getRbfSize(), lsh[0], lsh[1], lsh[2],
+		return new LinkageUnitConfig(parties, method, similarityThreshold, rbfSize, lsh[0], lsh[1],
 				lshSeed, mqttBrokerUrl, brokerConnectTimeoutSeconds, rbfCollectionTimeoutSeconds, rbfRepublishIntervalSeconds, clusterFactory,
 				persistenceEnabled, csvOutputPath, centerClusteringConfig, apConfig, mclConfig,
 				globalGreedyConfig, clipConfig, dbParams[0], dbParams[1], dbParams[2], dbParams[3],
@@ -303,27 +303,33 @@ public final class LinkageUnitConfigLoader {
 	}
 
 	/**
-	 * @return {@code [keySize, keys, valueRange]}, gia' validati positivi.
-	 *         {@code valueRange}, se omesso nel JSON, usa {@code rbfSize} come
-	 *         default (invece del fisso {@code DEFAULT_LSH_VALUE_RANGE}) quando
-	 *         dichiarato: e' cosi' che il blocking campiona davvero la dimensione
-	 *         reale dell'RBF (es. dimezzata da un hardening XOR-fold) invece di
-	 *         restare sempre a 1024 a prescindere da cosa produce il Data Owner.
+	 * @return {@code rbfSize}, campo ora obbligatorio: e' l'unica fonte di
+	 *         verita' sulla lunghezza dell'RBF (usata anche come range del
+	 *         MinHash nel blocking, vedi {@link #resolveLsh}), spinta dalla SMU
+	 *         e non piu' riportata/incrociata coi singoli Data Owner.
 	 */
-	private static int[] resolveLsh(BlockingJsonConfig blocking, Integer rbfSize, Path jsonPath)
+	private static int resolveRbfSize(Integer rbfSize, Path jsonPath) throws LinkageUnitConfigException {
+		if (rbfSize == null) {
+			throw new LinkageUnitConfigException("Campo obbligatorio 'rbfSize' mancante in " + jsonPath);
+		}
+		if (rbfSize <= 0) {
+			throw new LinkageUnitConfigException("'rbfSize' deve essere positivo, trovato " + rbfSize + " in " + jsonPath);
+		}
+		return rbfSize;
+	}
+
+	/** @return {@code [keySize, keys]}, gia' validati positivi. */
+	private static int[] resolveLsh(BlockingJsonConfig blocking, Path jsonPath)
 			throws LinkageUnitConfigException {
 		final JaccardLshJsonConfig jaccardLsh = blocking != null ? blocking.getJaccardLsh() : null;
 		final int keySize = jaccardLsh != null && jaccardLsh.getKeySize() != null ? jaccardLsh.getKeySize()
 				: DEFAULT_LSH_KEY_SIZE;
 		final int keys = jaccardLsh != null && jaccardLsh.getKeys() != null ? jaccardLsh.getKeys() : DEFAULT_LSH_KEYS;
-		final int valueRangeDefault = rbfSize != null ? rbfSize : DEFAULT_LSH_VALUE_RANGE;
-		final int valueRange = jaccardLsh != null && jaccardLsh.getValueRange() != null ? jaccardLsh.getValueRange()
-				: valueRangeDefault;
-		if (keySize <= 0 || keys <= 0 || valueRange <= 0) {
+		if (keySize <= 0 || keys <= 0) {
 			throw new LinkageUnitConfigException(
-					"'blocking.jaccardLsh.{keySize,keys,valueRange}' devono essere positivi in " + jsonPath);
+					"'blocking.jaccardLsh.{keySize,keys}' devono essere positivi in " + jsonPath);
 		}
-		return new int[] { keySize, keys, valueRange };
+		return new int[] { keySize, keys };
 	}
 
 	private static ClusterFactory resolveClusterFactory(ClusterJsonConfig cluster) {

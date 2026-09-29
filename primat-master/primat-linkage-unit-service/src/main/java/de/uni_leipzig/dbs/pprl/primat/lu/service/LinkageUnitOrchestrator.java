@@ -134,7 +134,7 @@ public class LinkageUnitOrchestrator {
 		}
 
 		final LshKeyGenerator keyGenerator = new JaccardLshKeyGenerator(config.getLshKeySize(), config.getLshKeys(),
-				config.getLshValueRange(), config.getLshSeed());
+				config.getRbfSize(), config.getLshSeed());
 		final Blocker blocker = new LshBlocker(keyGenerator);
 		final ClusteringMethod method = config.getClusteringMethod();
 		System.out.println();
@@ -271,7 +271,7 @@ public class LinkageUnitOrchestrator {
 		final Map<Party, Collection<Record>> input = collectRbf(runId);
 
 		final LshKeyGenerator keyGenerator = new JaccardLshKeyGenerator(config.getLshKeySize(), config.getLshKeys(),
-				config.getLshValueRange(), config.getLshSeed());
+				config.getRbfSize(), config.getLshSeed());
 		final Blocker blocker = new LshBlocker(keyGenerator);
 		final ClusteringMethod method = config.getClusteringMethod();
 
@@ -425,32 +425,11 @@ public class LinkageUnitOrchestrator {
 					+ "\nAllinea le configurazioni JSON dei Data Owner coinvolti prima di continuare.");
 		}
 
-		// Dimensione effettiva dell'RBF di ogni party, dichiarata con certezza dal
-		// suo Data Owner (DataOwnerConfig.computeEffectiveRbfBitLength()) — non
-		// dedotta dal contenuto di un bitset ricevuto, che puo' sottostimarla se i
-		// byte finali sono a zero. Usata dalla guardia rbfSize/valueRange sotto e,
-		// insieme a configHash, dalla guardia di persistenza piu' sotto.
-		final Map<String, Integer> effectiveBitLengthByParty = new HashMap<>();
-		for (final Party party : parties) {
-			effectiveBitLengthByParty.put(party.getName(), receivedByParty.get(party.getName()).getEffectiveRbfBitLength());
-		}
-
-		// Guardia sulla dimensione dell'RBF: confronta l'rbfSize dichiarato nel
-		// JSON della LU con la dimensione effettiva di ogni party. Solo un
-		// warning: un mismatch qui non impedisce il run, ma segnala che il
-		// blocking (valueRange, che di default eredita proprio rbfSize) potrebbe
-		// non corrispondere ai dati reali. Gira sempre, indipendentemente dalla
-		// persistenza (a differenza della guardia sotto).
-		if (config.getRbfSize() != null) {
-			for (final Map.Entry<String, Integer> entry : effectiveBitLengthByParty.entrySet()) {
-				if (!entry.getValue().equals(config.getRbfSize())) {
-					System.out.println("WARN  [" + entry.getKey() + "] rbfSize dichiarato (" + config.getRbfSize()
-							+ " bit) diverso dall'RBF effettivo ricevuto (" + entry.getValue()
-							+ " bit) - il blocking (valueRange=" + config.getLshValueRange()
-							+ ") potrebbe non corrispondere alla reale dimensione dell'RBF.");
-				}
-			}
-		}
+		// La lunghezza dell'RBF non e' piu' riportata dal Data Owner (che non la
+		// invia piu' nel payload): config.getRbfSize() e' l'unica fonte di verita',
+		// spinta dalla SMU e usata qui sotto per popolare lo snapshot di
+		// persistenza con lo stesso valore per tutti i party (non piu' un
+		// confronto per-party, dato che a monte non c'e' piu' nulla da confrontare).
 
 		// Guardia sulla persistenza, prima di decodificare qualunque RBF in Record
 		// e prima di qualunque persistNewClusters/getCandidateClusters: una
@@ -466,8 +445,7 @@ public class LinkageUnitOrchestrator {
 			for (final Party party : parties) {
 				final RbfPayload payload = receivedByParty.get(party.getName());
 				snapshotsByParty.put(party.getName(),
-						new DbConnection.EncodingSnapshot(effectiveBitLengthByParty.get(party.getName()),
-								payload.getConfigHash()));
+						new DbConnection.EncodingSnapshot(config.getRbfSize(), payload.getConfigHash()));
 			}
 			config.getDbConnection().checkEncodingState(snapshotsByParty);
 		}

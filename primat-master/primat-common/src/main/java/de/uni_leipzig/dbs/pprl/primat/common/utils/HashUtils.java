@@ -14,6 +14,7 @@
 
 package de.uni_leipzig.dbs.pprl.primat.common.utils;
 
+import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -65,13 +66,19 @@ public class HashUtils {
 		}
 	}
 
+	/**
+	 * Charset esplicito (invece del default della piattaforma) cosi' il digest
+	 * risultante e' riproducibile byte-per-byte da un'implementazione non-JVM
+	 * (es. la SMU in Python, che deve calcolare lo stesso {@code configHash} del
+	 * Data Owner: vedi {@code DeterministicHashing.digestBase64}).
+	 */
 	public static byte[] getHmac(HMacAlgorithm algorithm, String data, String key) {
-		final SecretKeySpec signingKey = new SecretKeySpec(key.getBytes(), algorithm.getName());
+		final SecretKeySpec signingKey = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), algorithm.getName());
 		final Mac mac = getMac(algorithm);
 
 		try {
 			mac.init(signingKey);
-			return mac.doFinal(data.getBytes());
+			return mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
 		}
 		catch (InvalidKeyException e) {
 			throw new IllegalArgumentException(e);

@@ -63,7 +63,7 @@ Esempio di contenuto (`party_A_clean.json`, abbreviato — vedi il file per lo s
   "bloomFilter": { "length": 1024, "hardening": { "type": "NONE" } },
   "columns": [
     { "index": 0, "name": "PARTY", "role": "PARTY" },
-    { "index": 3, "name": "FN", "role": "QID", "dataType": "TEXT", "hashFunctions": 12, "salt": "FN_" }
+    { "index": 3, "name": "FN", "role": "QID", "preprocessing": [ {"type":"TRIM"}, {"type":"UPPERCASE"}, {"type":"REMOVE_ACCENTS"}, {"type":"REMOVE_SPECIAL_CHARS"}, {"type":"TRUNCATE","from":0,"to":20} ], "hashFunctions": 12, "salt": "FN_" }
   ]
 }
 ```
@@ -72,7 +72,7 @@ Un JSON non valido (file assente, sintassi errata, colonne inconsistenti, ...) t
 
 **Nota importante**: i Data Owner possono essere avviati anche PRIMA del broker — `MqttClientWrapper.connect()` ritenta la connessione all'infinito (ogni 2s) finché non è raggiungibile. Il broker va comunque avviato (sezione 2bis) prima di far partire la Linkage Unit.
 
-Output atteso per ciascun Data Owner all'avvio: prima un riepilogo leggibile dell'intera configurazione ereditata dal JSON (`DataOwnerConfig.describe()`, 2026-09-22) — party, broker, sorgente dati, RBF length, hardening (`Off` o `On -> STEP(parametri)`), missing-value handling (`On`/`Off` + `anchorPriority`), e per ogni colonna QID `dataType`/`hashFunctions`/`salt`/CWE (`On`/`Off` + soglie)/`missingValueTokenCount` — poi `[A] in ascolto su primat/do/A/cmd`.
+Output atteso per ciascun Data Owner all'avvio: prima un riepilogo leggibile dell'intera configurazione ereditata dal JSON (`DataOwnerConfig.describe()`, 2026-09-22) — party, broker, sorgente dati, RBF length, hardening (`Off` o `On -> STEP(parametri)`), missing-value handling (`On`/`Off` + `anchorPriority`), e per ogni colonna QID `preprocessing`/`hashFunctions`/`salt`/CWE (`On`/`Off` + soglie)/`missingValueTokenCount` — poi `[A] in ascolto su primat/do/A/cmd`.
 
 ## 4. Avvio dell'orchestratore (Linkage Unit)
 
@@ -120,7 +120,7 @@ Il CSV puo' avere uno schema di colonne qualunque (delimitatore `;`, nessun head
 - una colonna con `"role": "PARTY"` (obbligatoria, esattamente una) — dovrebbe combaciare con il campo `"party"` del JSON
 - una colonna con `"role": "ID"` (obbligatoria, esattamente una) — id locale del record
 - al più una colonna con `"role": "GLOBAL_ID"` (opzionale — ground truth, non trasmesso via MQTT, solo l'RBF lo è)
-- una o più colonne con `"role": "QID"` (obbligatorio almeno una), ciascuna con `"dataType": "TEXT"` o `"NUMERIC"` (sceglie la `NormalizerChain`) e opzionalmente `"hashFunctions"`/`"salt"` per il tuning dell'RBF (default se omessi: `ColumnConfig.DEFAULT_HASH_FUNCTIONS` e `name + "_"`; negli esempi FEBRL il salt è esplicito e coerente per campo, es. `GIVEN_NAME_`/`SURNAME_`/`SUBURB_`/`POSTCODE_`/`STATE_`/`DATE_OF_BIRTH_`, identico tra le sorgenti `org`/`org1`), più `"constantWeightEncoding": {"enabled", "minTrigrams", "maxTrigrams"}` (opzionale, normalizza il peso dei trigrammi per quell'attributo dentro una banda) e `"missingValueTokenCount"` (opzionale, override esplicito del numero di token per un valore vuoto — altrimenti riusa `minTrigrams` della CWE se abilitata, o un default hardcoded)
+- una o più colonne con `"role": "QID"` (obbligatorio almeno una), ciascuna con `"preprocessing"` obbligatorio — lista ordinata di step (`TRIM`/`UPPERCASE`/`REMOVE_ACCENTS`/`REMOVE_SPECIAL_CHARS`/`REMOVE_NON_DIGITS`/`TRUNCATE` con `from`/`to`) che costruisce esplicitamente la `NormalizerChain` applicata prima della codifica RBF, vedi `PreprocessingStepFactory` — e opzionalmente `"hashFunctions"`/`"salt"` per il tuning dell'RBF (default se omessi: `ColumnConfig.DEFAULT_HASH_FUNCTIONS` e `name + "_"`; negli esempi FEBRL il salt è esplicito e coerente per campo, es. `GIVEN_NAME_`/`SURNAME_`/`SUBURB_`/`POSTCODE_`/`STATE_`/`DATE_OF_BIRTH_`, identico tra le sorgenti `org`/`org1`), più `"constantWeightEncoding": {"enabled", "minTrigrams", "maxTrigrams"}` (opzionale, normalizza il peso dei trigrammi per quell'attributo dentro una banda) e `"missingValueTokenCount"` (opzionale, override esplicito del numero di token per un valore vuoto — altrimenti riusa `minTrigrams` della CWE se abilitata, o un default hardcoded)
 - opzionalmente, top-level, `"missingValueHandling": {"enabled", "anchorPriority": [...]}`: se abilitato, un attributo QID vuoto viene codificato con token sintetici scelti su un bucket deterministico (invece del padding fisso `"___"`), derivato dall'hash del primo attributo QID non vuoto del record secondo l'ordine di `anchorPriority` — negli esempi FEBRL (2026-09-22) `missingValueHandling.enabled` e `constantWeightEncoding.enabled` sono entrambi `false` e `minTrigrams`/`maxTrigrams` uniformati a `6`/`12` su tutte le colonne QID (valori tenuti nel JSON pronti da riattivare, `anchorPriority` presente ma inerte: `["surname","given_name","date_of_birth","suburb","postcode","state"]`)
 
 Non serve nessuna modifica di codice per cambiare i dati: basta un nuovo file JSON (`"dataSource.csv.filePath"` diverso e `columns` adattate, oppure `"type": "DB"` con `dataSource.db.{tableName,jdbcUrl,username,password}`) passato come unico argomento a `DataOwnerService`. Entrambe le sorgenti sono effettivamente lette (`CsvRecordSource`/`JdbcRecordSource`); per `DB` la tabella deve avere le colonne nello stesso ordine posizionale di `columns[].index`.

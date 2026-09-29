@@ -31,10 +31,9 @@ public class LinkageUnitConfig {
 	private final List<Party> parties;
 	private final ClusteringMethod clusteringMethod;
 	private final SimilarityThresholdSpec thresholdSpec;
-	private final Integer rbfSize;
+	private final int rbfSize;
 	private final int lshKeySize;
 	private final int lshKeys;
-	private final int lshValueRange;
 	private final long lshSeed;
 	private final String mqttBrokerUrl;
 	private final long brokerConnectTimeoutSeconds;
@@ -68,7 +67,7 @@ public class LinkageUnitConfig {
 	 * @param dbPassword            password del DB dedicato, {@code null} se MCL
 	 */
 	public LinkageUnitConfig(List<Party> parties, ClusteringMethod clusteringMethod, SimilarityThresholdSpec thresholdSpec,
-			Integer rbfSize, int lshKeySize, int lshKeys, int lshValueRange, long lshSeed, String mqttBrokerUrl,
+			int rbfSize, int lshKeySize, int lshKeys, long lshSeed, String mqttBrokerUrl,
 			long brokerConnectTimeoutSeconds, long rbfCollectionTimeoutSeconds, long rbfRepublishIntervalSeconds, ClusterFactory clusterFactory,
 			boolean persistenceEnabled, String csvOutputPath, CenterClusteringConfig centerClusteringConfig,
 			ApConfig apConfig, MclConfig mclConfig, GlobalGreedyConfig globalGreedyConfig, ClipConfig clipConfig,
@@ -79,7 +78,6 @@ public class LinkageUnitConfig {
 		this.rbfSize = rbfSize;
 		this.lshKeySize = lshKeySize;
 		this.lshKeys = lshKeys;
-		this.lshValueRange = lshValueRange;
 		this.lshSeed = lshSeed;
 		this.mqttBrokerUrl = mqttBrokerUrl;
 		this.brokerConnectTimeoutSeconds = brokerConnectTimeoutSeconds;
@@ -123,8 +121,13 @@ public class LinkageUnitConfig {
 		return thresholdSpec;
 	}
 
-	/** @return dimensione attesa dell'RBF in bit (informativa), {@code null} se non impostata in JSON. */
-	public Integer getRbfSize() {
+	/**
+	 * @return dimensione autorevole dell'RBF in bit: unica fonte di verita' per
+	 *         il blocking (vedi {@code LinkageUnitOrchestrator}, che la usa
+	 *         direttamente al posto del vecchio {@code valueRange}) — obbligatoria,
+	 *         validata da {@code LinkageUnitConfigLoader}.
+	 */
+	public int getRbfSize() {
 		return rbfSize;
 	}
 
@@ -134,10 +137,6 @@ public class LinkageUnitConfig {
 
 	public int getLshKeys() {
 		return lshKeys;
-	}
-
-	public int getLshValueRange() {
-		return lshValueRange;
 	}
 
 	public long getLshSeed() {
@@ -227,9 +226,9 @@ public class LinkageUnitConfig {
 		sb.append("Broker MQTT:            ").append(mqttBrokerUrl).append('\n');
 		sb.append("Strategia:              ").append(clusteringMethod).append('\n');
 		sb.append("Soglia similarita':     ").append(thresholdSpec).append('\n');
-		sb.append("RBF size (informativo): ").append(rbfSize != null ? rbfSize + " bit" : "non impostato").append('\n');
+		sb.append("RBF size:               ").append(rbfSize).append(" bit\n");
 		sb.append("Blocking (JaccardLSH):  keySize=").append(lshKeySize).append(", keys=").append(lshKeys)
-				.append(", valueRange=").append(lshValueRange).append(", seed=").append(lshSeed).append('\n');
+				.append(", valueRange=").append(rbfSize).append(", seed=").append(lshSeed).append('\n');
 		final String rangeTestingDisabled = "DISABILITATA (modalita' TEST range: nessun DB/CSV/incremento)";
 		sb.append("Persistenza:            ");
 		if (thresholdSpec.isRange()) {

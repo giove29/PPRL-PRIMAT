@@ -1,0 +1,151 @@
+{
+  "_note": "Catalogo di riferimento (solo documentazione, non letto da smu.py) degli step di 'preprocessing' che si possono dichiarare su una colonna QID in do_<party>.json. Deve restare sincronizzato a mano con PreprocessingStepFactory (Java, primat-data-owner-service/.../service/config/PreprocessingStepFactory.java): quella classe e' l'unica fonte di verita' per validazione/esecuzione/digest, questo file descrive solo cosa esiste oggi per chi scrive una configurazione SMU.",
+
+  "formato": "Ogni colonna QID di do_<party>.json dichiara \"preprocessing\": [ {step}, {step}, ... ] - una lista ORDINATA (l'ordine di esecuzione e' l'ordine dichiarato) di almeno uno step, ciascuno un oggetto {\"type\": \"<NOME>\"} (piu' parametri specifici del tipo). Ogni colonna QID deve dichiarare 'preprocessing': una lista vuota o assente viene rifiutata al caricamento (DataOwnerConfigException).",
+
+  "colonne_fisiche_vs_virtuali": "Una colonna QID con 'index' e' fisica: legge il proprio valore dalla sorgente dati, e il suo 'preprocessing' contiene solo step di normalizzazione (TRIM/UPPERCASE/...). Una colonna QID SENZA 'index' e' virtuale: non ha una posizione fisica, quindi il suo 'preprocessing' deve iniziare con esattamente uno step MERGE o SPLIT (unico modo per ottenere un valore iniziale, leggendolo da colonne 'role: RAW'), seguito da 0 o piu' step di normalizzazione ordinari. MERGE/SPLIT non possono comparire altrove nella lista (solo come primo step, solo su colonne virtuali). Una colonna 'role: RAW' e' materiale grezzo per MERGE/SPLIT: viene letta ma mai codificata da sola, e non dichiara 'preprocessing'.",
+
+  "steps": [
+    {
+      "type": "TRIM",
+      "parametri": [],
+      "descrizione": "Rimuove spazi bianchi iniziali/finali dal valore.",
+      "implementazione_java": "TrimNormalizer",
+      "esempio": { "type": "TRIM" }
+    },
+    {
+      "type": "UPPERCASE",
+      "parametri": [],
+      "descrizione": "Converte il valore in maiuscolo.",
+      "implementazione_java": "UpperCaseNormalizer",
+      "esempio": { "type": "UPPERCASE" }
+    },
+    {
+      "type": "REMOVE_ACCENTS",
+      "parametri": [],
+      "descrizione": "Rimuove diacritici/accenti (es. 'É' -> 'E').",
+      "implementazione_java": "AccentRemover",
+      "esempio": { "type": "REMOVE_ACCENTS" }
+    },
+    {
+      "type": "REMOVE_SPECIAL_CHARS",
+      "parametri": [],
+      "descrizione": "Rimuove caratteri speciali/punteggiatura, lasciando solo lettere/cifre (e spazi).",
+      "implementazione_java": "SpecialCharacterRemover",
+      "esempio": { "type": "REMOVE_SPECIAL_CHARS" }
+    },
+    {
+      "type": "REMOVE_NON_DIGITS",
+      "parametri": [],
+      "descrizione": "Rimuove tutti i caratteri non numerici (utile per colonne numeriche rappresentate come testo, es. anno di nascita, CAP).",
+      "implementazione_java": "NonDigitRemover",
+      "esempio": { "type": "REMOVE_NON_DIGITS" }
+    },
+    {
+      "type": "TRUNCATE",
+      "parametri": [
+        { "nome": "from", "tipo": "intero", "obbligatorio": true, "descrizione": "Indice di inizio (incluso) della sottostringa." },
+        { "nome": "to", "tipo": "intero", "obbligatorio": true, "descrizione": "Indice di fine (escluso) della sottostringa; se supera la lunghezza del valore viene troncato alla lunghezza effettiva." }
+      ],
+      "descrizione": "Estrae una sottostringa [from, to) - tipicamente usato per limitare la lunghezza massima di un campo testuale prima dell'estrazione dei trigrammi.",
+      "implementazione_java": "SubstringNormalizer(from, to)",
+      "esempio": { "type": "TRUNCATE", "from": 0, "to": 20 }
+    },
+    {
+      "type": "MERGE",
+      "solo_come": "primo step di una colonna QID virtuale (senza 'index')",
+      "parametri": [
+        { "nome": "sources", "tipo": "lista di stringhe (>=2)", "obbligatorio": true, "descrizione": "Nomi di colonne 'role: RAW' da unire, nell'ordine dichiarato." },
+        { "nome": "merger", "tipo": "oggetto {type, ...}", "obbligatorio": true, "descrizione": "Vedi merger_types sotto." }
+      ],
+      "descrizione": "Unisce piu' colonne RAW in un'unica stringa iniziale per questa colonna - tipicamente per allineare un DO con nome/cognome separati a un DO che li ha gia' uniti in un solo campo. Il risultato passa poi ai normali step successivi (TRIM/UPPERCASE/...).",
+      "merger_types": [
+        { "type": "BLANK", "descrizione": "Unisce con uno spazio (\" \").", "implementazione_java": "BlankMerger" },
+        { "type": "DOT", "descrizione": "Unisce con un punto (\".\").", "implementazione_java": "DotMerger" },
+        { "type": "SLASH", "descrizione": "Unisce con uno slash (\"/\").", "implementazione_java": "SlashMerger" },
+        { "type": "SIMPLE", "descrizione": "Unisce con un separatore arbitrario.",
+          "parametri": [ { "nome": "separator", "tipo": "stringa", "obbligatorio": true } ],
+          "implementazione_java": "SimpleMerger(separator)",
+          "esempio": { "type": "SIMPLE", "separator": "-" } }
+      ],
+      "esempio": { "type": "MERGE", "sources": ["given_name", "surname"], "merger": { "type": "BLANK" } }
+    },
+    {
+      "type": "SPLIT",
+      "solo_come": "primo step di una colonna QID virtuale (senza 'index')",
+      "parametri": [
+        { "nome": "source", "tipo": "stringa", "obbligatorio": true, "descrizione": "Nome della colonna 'role: RAW' da dividere." },
+        { "nome": "splitter", "tipo": "oggetto {type, ...}", "obbligatorio": true, "descrizione": "Vedi splitter_types sotto." },
+        { "nome": "parts", "tipo": "intero (>=2)", "obbligatorio": true, "descrizione": "Numero totale di parti prodotte dallo split." },
+        { "nome": "part", "tipo": "intero, 0-based", "obbligatorio": true, "descrizione": "Indice della parte che QUESTA colonna rappresenta." }
+      ],
+      "descrizione": "Estrae UNA parte di una colonna RAW divisa - tipicamente per allineare un DO con un campo composito (es. una data \"01 15 1990\") a un DO che lo ha gia' diviso in piu' colonne (giorno/mese/anno). Ogni parte e' dichiarata su una colonna diversa (stesso 'source'/'splitter'/'parts', 'part' differente): non c'e' un elenco 'targets' condiviso, ogni colonna descrive se stessa. Le colonne che condividono lo stesso 'source' devono coprire esattamente [0, parts) senza buchi ne' duplicati, con lo stesso 'splitter'/'parts' (validato in fase di caricamento). Se il valore sorgente e' vuoto/mancante per un record, tutte le colonne di quel gruppo diventano stringhe vuote per quel record (nessuna eccezione).",
+      "splitter_types": [
+        { "type": "BLANK", "descrizione": "Divide su ogni spazio.", "implementazione_java": "BlankSplitter" },
+        { "type": "COMMA", "descrizione": "Divide su ogni virgola.", "implementazione_java": "CommaSplitter" },
+        { "type": "DOT", "descrizione": "Divide su ogni punto.", "implementazione_java": "DotSplitter" },
+        { "type": "HYPHEN", "descrizione": "Divide su ogni trattino.", "implementazione_java": "HyphenSplitter" },
+        { "type": "PUNCTUATION", "descrizione": "Divide su ogni carattere di punteggiatura.", "implementazione_java": "PunctuationSplitter" },
+        { "type": "POSITION", "descrizione": "Divide in due parti a una posizione fissa (richiede 'parts'=2).",
+          "parametri": [ { "nome": "position", "tipo": "intero", "obbligatorio": true, "descrizione": "indice di taglio, 0-based" } ],
+          "implementazione_java": "PositionSplitter(position)",
+          "esempio": { "type": "POSITION", "position": 4 } },
+        { "type": "REGEX", "descrizione": "Divide su un pattern regolare arbitrario.",
+          "parametri": [ { "nome": "pattern", "tipo": "stringa (regex Java)", "obbligatorio": true } ],
+          "implementazione_java": "RegexSplitter(pattern, parts)",
+          "esempio": { "type": "REGEX", "pattern": "[\\\\s/-]" } }
+      ],
+      "esempio": { "type": "SPLIT", "source": "date_of_birth", "splitter": { "type": "BLANK" }, "parts": 3, "part": 0 }
+    }
+  ],
+
+  "catene_di_riferimento": {
+    "_note": "Le due catene storicamente usate in tutti i JSON del repo per colonne QID fisiche (erano prima selezionate implicitamente dall'etichetta dataType=TEXT/NUMERIC, ora vanno dichiarate esplicitamente con questi step, nello stesso ordine).",
+    "TEXT": [
+      { "type": "TRIM" },
+      { "type": "UPPERCASE" },
+      { "type": "REMOVE_ACCENTS" },
+      { "type": "REMOVE_SPECIAL_CHARS" },
+      { "type": "TRUNCATE", "from": 0, "to": 20 }
+    ],
+    "NUMERIC": [
+      { "type": "TRIM" },
+      { "type": "REMOVE_NON_DIGITS" }
+    ]
+  },
+
+  "esempio_do_org_json_con_merge_e_split": {
+    "_note": "Come apparirebbe do_org.json se given_name/surname dovessero essere fusi in full_name, e date_of_birth (una singola stringa \"dd mm yyyy\") dovesse essere divisa in tre colonne - per allinearsi a un altro DO con quello schema.",
+    "columns": [
+      { "index": 0, "name": "PARTY", "role": "PARTY" },
+      { "index": 1, "name": "ID", "role": "ID" },
+      { "index": 2, "name": "GLOBAL_ID", "role": "GLOBAL_ID" },
+      { "index": 3, "name": "given_name", "role": "RAW" },
+      { "index": 4, "name": "surname", "role": "RAW" },
+      { "index": 5, "name": "date_of_birth", "role": "RAW" },
+      { "index": 6, "name": "phone_number", "role": "RAW" },
+      { "name": "full_name", "role": "QID", "preprocessing": [
+        { "type": "MERGE", "sources": ["given_name", "surname"], "merger": { "type": "BLANK" } },
+        { "type": "TRIM" }, { "type": "UPPERCASE" }, { "type": "REMOVE_ACCENTS" }, { "type": "REMOVE_SPECIAL_CHARS" }, { "type": "TRUNCATE", "from": 0, "to": 20 }
+      ] },
+      { "name": "dob_day", "role": "QID", "preprocessing": [
+        { "type": "SPLIT", "source": "date_of_birth", "splitter": { "type": "BLANK" }, "parts": 3, "part": 0 }, { "type": "TRIM" }
+      ] },
+      { "name": "dob_month", "role": "QID", "preprocessing": [
+        { "type": "SPLIT", "source": "date_of_birth", "splitter": { "type": "BLANK" }, "parts": 3, "part": 1 }, { "type": "TRIM" }
+      ] },
+      { "name": "dob_year", "role": "QID", "preprocessing": [
+        { "type": "SPLIT", "source": "date_of_birth", "splitter": { "type": "BLANK" }, "parts": 3, "part": 2 }, { "type": "TRIM" }
+      ] },
+      { "name": "phone", "role": "QID", "preprocessing": [
+        { "type": "SPLIT", "source": "phone_number", "splitter": { "type": "POSITION", "position": 3 }, "parts": 2, "part": 1 }
+      ] }
+    ]
+  },
+
+  "note_implementative": [
+    "La catena viene eseguita in ordine dalla pipeline del DO (per MERGE/SPLIT: un pre-pass su ogni Record, prima del resto del preprocessing; per gli altri step: FieldNormalizer/NormalizerChain) prima dell'estrazione dei trigrammi e della codifica RBF, mai dalla SMU: la SMU si limita a dichiararla nel JSON e a spingerla via MQTT.",
+    "La stringa canonica del digest di configurazione (DataOwnerConfig.computeConfigHash(), campo 'preprocessing=...') include la catena esatta, MERGE/SPLIT compresi: due DO con catene diverse per la stessa colonna (o con un MERGE/SPLIT diverso) produrrebbero un digest diverso, rilevabile dalla Linkage Unit come disallineamento di configurazione.",
+    "Aggiungere un nuovo step richiede una modifica coordinata in PreprocessingStepFactory (Java: validateColumnSteps/validateCrossColumnConsistency, build, describe) e in primat-smu/smu.py (_describe_preprocessing_step) per mantenere la parita' del digest."
+  ]
+}

@@ -68,4 +68,26 @@ public final class MqttTopics {
 	public static String statusTopic(String runId, String party) {
 		return "primat/lu/" + runId + "/status/" + party;
 	}
+
+	/**
+	 * Topic su cui un Data Owner resta in ascolto per ricevere una push di
+	 * configurazione (schema+encoding fusi in un unico messaggio) dalla SMU.
+	 *
+	 * @param party nome del party (es. "A")
+	 * @return topic "primat/do/{party}/config"
+	 */
+	public static String configTopic(String party) {
+		return "primat/do/" + party + "/config";
+	}
+
+	/**
+	 * Topic su cui un Data Owner pubblica l'esito (ack) dell'adozione di una
+	 * push di configurazione ricevuta dalla SMU.
+	 *
+	 * @param party nome del party (es. "A")
+	 * @return topic "primat/smu/{party}/ack"
+	 */
+	public static String configAckTopic(String party) {
+		return "primat/smu/" + party + "/ack";
+	}
 }

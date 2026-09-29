@@ -40,14 +40,15 @@ class LinkageUnitConfigLoaderTest {
 
 	private static final String MINIMAL_MCL_JSON = "{"
 			+ "\"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\" }, { \"name\": \"B\" } ],"
-			+ "\"clusteringMethod\": \"MCL\""
+			+ "\"clusteringMethod\": \"MCL\", \"rbfSize\": 1024"
 			+ "}";
 
 	private static final String FULL_CENTER_CLUSTERING_JSON = "{"
 			+ "\"mqttBrokerUrl\": \"tcp://localhost:1884\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": false }, { \"name\": \"B\", \"duplicateFree\": false } ],"
 			+ "\"clusteringMethod\": \"CENTER_CLUSTERING\","
 			+ "\"similarityThreshold\": 0.75,"
-			+ "\"blocking\": { \"jaccardLsh\": { \"keySize\": 5, \"keys\": 20, \"valueRange\": 2048, \"seed\": 7 } },"
+			+ "\"rbfSize\": 2048,"
+			+ "\"blocking\": { \"jaccardLsh\": { \"keySize\": 5, \"keys\": 20, \"seed\": 7 } },"
 			+ "\"mqtt\": { \"brokerConnectTimeoutSeconds\": 12, \"rbfCollectionTimeoutSeconds\": 45, \"rbfRepublishIntervalSeconds\": 5 },"
 			+ "\"cluster\": { \"blockingKeyStrategy\": \"INTERSECTION\", \"representantStrategy\": \"REPLACE\" },"
 			+ "\"persistence\": { \"enabled\": true },"
@@ -74,9 +75,9 @@ class LinkageUnitConfigLoaderTest {
 		assertTrue(config.getParties().stream().noneMatch(Party::isDuplicateFree));
 		assertEquals(ClusteringMethod.MCL, config.getClusteringMethod());
 		assertEquals(0.6, config.getSimilarityThreshold());
+		assertEquals(1024, config.getRbfSize());
 		assertEquals(4, config.getLshKeySize());
 		assertEquals(30, config.getLshKeys());
-		assertEquals(1024, config.getLshValueRange());
 		assertEquals(42L, config.getLshSeed());
 		assertEquals("tcp://localhost:1883", config.getMqttBrokerUrl());
 		assertEquals(30L, config.getRbfCollectionTimeoutSeconds());
@@ -102,9 +103,9 @@ class LinkageUnitConfigLoaderTest {
 
 		assertEquals(ClusteringMethod.CENTER_CLUSTERING, config.getClusteringMethod());
 		assertEquals(0.75, config.getSimilarityThreshold());
+		assertEquals(2048, config.getRbfSize());
 		assertEquals(5, config.getLshKeySize());
 		assertEquals(20, config.getLshKeys());
-		assertEquals(2048, config.getLshValueRange());
 		assertEquals(7L, config.getLshSeed());
 		assertEquals("tcp://localhost:1884", config.getMqttBrokerUrl());
 		assertEquals(45L, config.getRbfCollectionTimeoutSeconds());
@@ -113,35 +114,36 @@ class LinkageUnitConfigLoaderTest {
 	}
 
 	@Test
-	void valueRangeDefaultsToRbfSizeWhenOmitted() throws Exception {
+	void rbfSizeIsMandatoryAndUsedDirectlyByBlocking() throws Exception {
 		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\" } ],"
 				+ " \"clusteringMethod\": \"MCL\", \"rbfSize\": 512 }";
-		final Path path = writeJson("value-range-from-rbfsize.json", json);
+		final Path path = writeJson("rbfsize-mandatory.json", json);
 
 		final LinkageUnitConfig config = LinkageUnitConfigLoader.load(path);
 
-		assertEquals(512, config.getLshValueRange());
+		assertEquals(512, config.getRbfSize());
 	}
 
 	@Test
-	void explicitValueRangeOverridesRbfSize() throws Exception {
+	void missingRbfSizeThrowsConfigException() throws Exception {
 		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\" } ],"
-				+ " \"clusteringMethod\": \"MCL\", \"rbfSize\": 512,"
-				+ " \"blocking\": { \"jaccardLsh\": { \"valueRange\": 2048 } } }";
-		final Path path = writeJson("value-range-explicit-override.json", json);
+				+ " \"clusteringMethod\": \"MCL\" }";
+		final Path path = writeJson("no-rbfsize.json", json);
 
-		final LinkageUnitConfig config = LinkageUnitConfigLoader.load(path);
-
-		assertEquals(2048, config.getLshValueRange());
+		final LinkageUnitConfigException e = assertThrows(LinkageUnitConfigException.class,
+				() -> LinkageUnitConfigLoader.load(path));
+		assertTrue(e.getMessage().contains("rbfSize"));
 	}
 
 	@Test
-	void valueRangeDefaultsTo1024WhenNeitherRbfSizeNorValueRangeDeclared() throws Exception {
-		final Path path = writeJson("value-range-no-rbfsize.json", MINIMAL_MCL_JSON);
+	void nonPositiveRbfSizeThrowsConfigException() throws Exception {
+		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\" } ],"
+				+ " \"clusteringMethod\": \"MCL\", \"rbfSize\": 0 }";
+		final Path path = writeJson("zero-rbfsize.json", json);
 
-		final LinkageUnitConfig config = LinkageUnitConfigLoader.load(path);
-
-		assertEquals(1024, config.getLshValueRange());
+		final LinkageUnitConfigException e = assertThrows(LinkageUnitConfigException.class,
+				() -> LinkageUnitConfigLoader.load(path));
+		assertTrue(e.getMessage().contains("rbfSize"));
 	}
 
 	@Test
@@ -215,7 +217,7 @@ class LinkageUnitConfigLoaderTest {
 	void loadsGlobalGreedyConfigWithAllCleanParties() throws Exception {
 		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": true },"
 				+ " { \"name\": \"B\", \"duplicateFree\": true }, { \"name\": \"C\", \"duplicateFree\": true } ],"
-				+ " \"clusteringMethod\": \"GLOBAL_GREEDY\","
+				+ " \"clusteringMethod\": \"GLOBAL_GREEDY\", \"rbfSize\": 1024,"
 				+ " \"database\": { \"url\": \"jdbc:postgresql://localhost:5432/primat_global_greedy\", \"user\": \"primat\", \"password\": \"primat\" } }";
 		final Path path = writeJson("global-greedy-ok.json", json);
 
@@ -241,7 +243,7 @@ class LinkageUnitConfigLoaderTest {
 	void loadsClipConfigWithAllCleanParties() throws Exception {
 		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": true },"
 				+ " { \"name\": \"B\", \"duplicateFree\": true }, { \"name\": \"C\", \"duplicateFree\": true } ],"
-				+ " \"clusteringMethod\": \"CLIP\","
+				+ " \"clusteringMethod\": \"CLIP\", \"rbfSize\": 1024,"
 				+ " \"database\": { \"url\": \"jdbc:postgresql://localhost:5432/primat_clip\", \"user\": \"primat\", \"password\": \"primat\" } }";
 		final Path path = writeJson("clip-ok.json", json);
 
@@ -280,7 +282,7 @@ class LinkageUnitConfigLoaderTest {
 	@Test
 	void loadsCenterClusteringWithAllDirtyParties() throws Exception {
 		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": false },"
-				+ " { \"name\": \"B\" } ], \"clusteringMethod\": \"CENTER_CLUSTERING\","
+				+ " { \"name\": \"B\" } ], \"clusteringMethod\": \"CENTER_CLUSTERING\", \"rbfSize\": 1024,"
 				+ " \"database\": { \"url\": \"jdbc:postgresql://localhost:5432/primat_center_clustering\", \"user\": \"primat\", \"password\": \"primat\" } }";
 		final Path path = writeJson("center-dirty.json", json);
 
@@ -302,7 +304,7 @@ class LinkageUnitConfigLoaderTest {
 	@Test
 	void persistenceEnabledWithMclThrowsConfigException() throws Exception {
 		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\" } ], \"clusteringMethod\": \"MCL\","
-				+ " \"persistence\": { \"enabled\": true } }";
+				+ " \"rbfSize\": 1024, \"persistence\": { \"enabled\": true } }";
 		final Path path = writeJson("mcl-persistence.json", json);
 
 		final LinkageUnitConfigException e = assertThrows(LinkageUnitConfigException.class,
@@ -313,7 +315,7 @@ class LinkageUnitConfigLoaderTest {
 	@Test
 	void missingDatabaseForPersistentMethodThrowsConfigException() throws Exception {
 		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": true } ],"
-				+ " \"clusteringMethod\": \"MSCD_AP\" }";
+				+ " \"clusteringMethod\": \"MSCD_AP\", \"rbfSize\": 1024 }";
 		final Path path = writeJson("no-database.json", json);
 
 		final LinkageUnitConfigException e = assertThrows(LinkageUnitConfigException.class,
@@ -342,7 +344,7 @@ class LinkageUnitConfigLoaderTest {
 
 	private static String withThreshold(String thresholdJson, String autoThresholdJson) {
 		return "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": false } ],"
-				+ " \"clusteringMethod\": \"MCL\", \"similarityThreshold\": " + thresholdJson
+				+ " \"clusteringMethod\": \"MCL\", \"rbfSize\": 1024, \"similarityThreshold\": " + thresholdJson
 				+ (autoThresholdJson != null ? ", \"autoThreshold\": " + autoThresholdJson : "") + " }";
 	}
 
@@ -402,10 +404,9 @@ class LinkageUnitConfigLoaderTest {
 		assertEquals(3, config.getParties().size());
 		assertEquals(ThresholdMode.AUTO_PRECISION, config.getThresholdSpec().getMode());
 		assertEquals(0.03, config.getThresholdSpec().getEpsilon(), 1e-12);
-		assertEquals(Integer.valueOf(1024), config.getRbfSize());
+		assertEquals(1024, config.getRbfSize());
 		assertEquals(6, config.getLshKeySize());
 		assertEquals(20, config.getLshKeys());
-		assertEquals(1024, config.getLshValueRange());
 		assertEquals(42L, config.getLshSeed());
 		assertEquals(30L, config.getBrokerConnectTimeoutSeconds());
 		assertEquals(30L, config.getRbfCollectionTimeoutSeconds());
@@ -462,7 +463,7 @@ class LinkageUnitConfigLoaderTest {
 
 	private static String withRange(String rangeJson) {
 		return "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\", \"parties\": [ { \"name\": \"A\", \"duplicateFree\": false } ],"
-				+ " \"clusteringMethod\": \"MCL\", \"similarityThreshold\": \"range\", \"range\": " + rangeJson + " }";
+				+ " \"clusteringMethod\": \"MCL\", \"rbfSize\": 1024, \"similarityThreshold\": \"range\", \"range\": " + rangeJson + " }";
 	}
 
 	@Test
@@ -502,7 +503,7 @@ class LinkageUnitConfigLoaderTest {
 	void rangeThresholdForcesPersistenceOffEvenIfExplicitlyEnabled() throws Exception {
 		final String json = "{ \"mqttBrokerUrl\": \"tcp://localhost:1883\","
 				+ " \"parties\": [ { \"name\": \"A\", \"duplicateFree\": true }, { \"name\": \"B\", \"duplicateFree\": false } ],"
-				+ " \"clusteringMethod\": \"MSCD_AP\", \"similarityThreshold\": \"range\","
+				+ " \"clusteringMethod\": \"MSCD_AP\", \"rbfSize\": 1024, \"similarityThreshold\": \"range\","
 				+ " \"persistence\": { \"enabled\": true },"
 				+ " \"database\": { \"url\": \"jdbc:postgresql://localhost:5432/primat_mscd_ap\", \"user\": \"primat\", \"password\": \"primat\" } }";
 		final LinkageUnitConfig config = LinkageUnitConfigLoader.load(writeJson("range_persistence.json", json));

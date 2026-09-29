@@ -59,6 +59,7 @@ public final class DataOwnerConfigLoader {
 		validateDataSource(raw.getDataSource(), jsonPath);
 		validateColumns(raw.getColumns(), jsonPath);
 		validateMissingValueHandling(raw.getMissingValueHandling(), raw.getColumns(), jsonPath);
+		PreprocessingStepFactory.validateCrossColumnConsistency(raw.getColumns(), jsonPath);
 
 		final int bfLength = resolveBloomFilterLength(raw.getBloomFilter(), jsonPath);
 		final BloomFilterHardener hardener = resolveHardener(raw.getBloomFilter(), bfLength, jsonPath);
@@ -86,7 +87,7 @@ public final class DataOwnerConfigLoader {
 
 		return new DataOwnerConfig(raw.getParty(), dataSource.getType(), csvFilePath, csvHasHeader, csvDelimiter, dbConfig,
 				raw.getMqttBrokerUrl(), raw.getColumns(), bfLength, hardener, raw.isDebug(), missingValueHandlingEnabled,
-				missingValueAnchorPriority, hardeningDescriptions);
+				missingValueAnchorPriority, hardeningDescriptions, raw.getHmacKey());
 	}
 
 	private static String readFile(Path jsonPath) throws DataOwnerConfigException {
@@ -176,13 +177,24 @@ public final class DataOwnerConfigLoader {
 				throw new DataOwnerConfigException("Colonna con 'role' mancante in " + jsonPath);
 			}
 			requireNonBlank(column.getName(), "columns[].name", jsonPath);
-			if (column.getIndex() < 0) {
-				throw new DataOwnerConfigException(
-						"Indice di colonna negativo per '" + column.getName() + "' in " + jsonPath);
+
+			// 'index' e' obbligatorio per ogni ruolo tranne QID: una colonna QID senza
+			// index e' "virtuale", il suo valore lo calcola il primo step MERGE/SPLIT
+			// del proprio 'preprocessing' (vedi PreprocessingStepFactory), non e'
+			// letta fisicamente dalla sorgente dati.
+			if (column.getRole() != ColumnRole.QID && column.getIndex() == null) {
+				throw new DataOwnerConfigException("Colonna '" + column.getName() + "' (role=" + column.getRole()
+						+ ") priva del campo 'index' obbligatorio in " + jsonPath);
 			}
-			if (!seenIndexes.add(column.getIndex())) {
-				throw new DataOwnerConfigException(
-						"Indice di colonna duplicato: " + column.getIndex() + " in " + jsonPath);
+			if (column.getIndex() != null) {
+				if (column.getIndex() < 0) {
+					throw new DataOwnerConfigException(
+							"Indice di colonna negativo per '" + column.getName() + "' in " + jsonPath);
+				}
+				if (!seenIndexes.add(column.getIndex())) {
+					throw new DataOwnerConfigException(
+							"Indice di colonna duplicato: " + column.getIndex() + " in " + jsonPath);
+				}
 			}
 			if (!seenNames.add(column.getName().toUpperCase())) {
 				throw new DataOwnerConfigException("Nome di colonna duplicato: " + column.getName() + " in " + jsonPath);
@@ -201,6 +213,8 @@ public final class DataOwnerConfigLoader {
 				case QID:
 					qidCount++;
 					validateQidColumn(column, jsonPath);
+					break;
+				case RAW:
 					break;
 			}
 		}
@@ -224,10 +238,7 @@ public final class DataOwnerConfigLoader {
 	}
 
 	private static void validateQidColumn(ColumnConfig column, Path jsonPath) throws DataOwnerConfigException {
-		if (column.getDataType() == null) {
-			throw new DataOwnerConfigException(
-					"Colonna QID '" + column.getName() + "' priva del campo 'dataType' obbligatorio in " + jsonPath);
-		}
+		PreprocessingStepFactory.validateColumnSteps(column.getPreprocessing(), column, jsonPath);
 		if (column.getHashFunctions() != null && column.getHashFunctions() <= 0) {
 			throw new DataOwnerConfigException("Colonna QID '" + column.getName()
 					+ "': 'hashFunctions' deve essere positivo, trovato " + column.getHashFunctions() + " in "
@@ -409,9 +420,9 @@ public final class DataOwnerConfigLoader {
 						+ " e' rischioso a livello di performance e puo' degradare eccessivamente i dati (perdita di informazione nell'RBF).");
 			}
 			System.out.println(
-					"ATTENZIONE: XOR-Folding attivo - impostare 'rbfSize' a " + (bfLength >> foldCount)
-							+ " (= " + bfLength + " >> " + foldCount
-							+ ") nella configurazione della Linkage Unit, cosi' il blocking (valueRange) e il controllo automatico a run-time corrispondono alla reale dimensione dell'RBF.");
+					"ATTENZIONE: XOR-Folding attivo - 'rbfSize' nella configurazione della Linkage Unit deve essere "
+							+ (bfLength >> foldCount) + " (= " + bfLength + " >> " + foldCount
+							+ "), cosi' il blocking usa la reale dimensione dell'RBF dopo il folding.");
 			return new XorFolder(foldCount);
 		}
 

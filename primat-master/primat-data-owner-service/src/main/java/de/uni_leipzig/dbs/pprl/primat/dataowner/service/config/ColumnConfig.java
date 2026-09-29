@@ -4,13 +4,16 @@
  */
 package de.uni_leipzig.dbs.pprl.primat.dataowner.service.config;
 
+import java.util.List;
+
 /**
  * Una colonna dello schema del Data Owner, cosi' come dichiarata nel JSON di
  * configurazione. Popolata da Gson per riflessione (nessun costruttore
- * esplicito necessario), i campi {@code dataType}/{@code hashFunctions}/
- * {@code salt} hanno senso solo per {@code role == QID} e sono opzionali:
- * {@link #getHashFunctionsOrDefault()} e {@link #getSaltOrDefault()}
- * risolvono i default quando omessi nel JSON.
+ * esplicito necessario), i campi {@code preprocessing}/{@code hashFunctions}/
+ * {@code salt} hanno senso solo per {@code role == QID}: {@code preprocessing}
+ * e' obbligatorio per le colonne QID (vedi {@link PreprocessingStepFactory}),
+ * {@code hashFunctions}/{@code salt} sono opzionali - {@link #getHashFunctionsOrDefault()}
+ * e {@link #getSaltOrDefault()} risolvono i default quando omessi nel JSON.
  */
 public class ColumnConfig {
 
@@ -26,16 +29,23 @@ public class ColumnConfig {
 	 */
 	public static final int DEFAULT_MISSING_VALUE_TOKEN_COUNT = 7;
 
-	private int index;
+	private Integer index;
 	private String name;
 	private ColumnRole role;
-	private ColumnDataType dataType;
+	private List<PreprocessingStepJsonConfig> preprocessing;
 	private Integer hashFunctions;
 	private String salt;
 	private ConstantWeightEncodingJsonConfig constantWeightEncoding;
 	private Integer missingValueTokenCount;
 
-	public int getIndex() {
+	/**
+	 * @return la posizione fisica nella sorgente dati, o {@code null} per una
+	 *         colonna {@code QID} "virtuale" il cui valore e' calcolato dal
+	 *         primo step MERGE/SPLIT del proprio {@code preprocessing} (mai per
+	 *         {@code PARTY}/{@code ID}/{@code GLOBAL_ID}/{@code RAW}, sempre
+	 *         fisicamente lette).
+	 */
+	public Integer getIndex() {
 		return index;
 	}
 
@@ -47,8 +57,9 @@ public class ColumnConfig {
 		return role;
 	}
 
-	public ColumnDataType getDataType() {
-		return dataType;
+	/** @return la catena di preprocessing esplicita dichiarata nel JSON, o {@code null} se assente. */
+	public List<PreprocessingStepJsonConfig> getPreprocessing() {
+		return preprocessing;
 	}
 
 	/** @return il numero di hash function esplicitamente configurato, o {@code null} se omesso. */

@@ -11,8 +11,7 @@
   "blocking": {
     "jaccardLsh": {
       "keySize": 8,
-      "keys": 20,
-      "valueRange": 1024
+      "keys": 20
     }
   },
   "persistence": {

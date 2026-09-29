@@ -39,7 +39,7 @@ class DataOwnerPipelineIdPrefixTest {
 				+ "{\"index\": 0, \"name\": \"PARTY\", \"role\": \"PARTY\"},"
 				+ "{\"index\": 1, \"name\": \"GLOBAL_ID\", \"role\": \"GLOBAL_ID\"},"
 				+ "{\"index\": 2, \"name\": \"ID\", \"role\": \"ID\"},"
-				+ "{\"index\": 3, \"name\": \"FN\", \"role\": \"QID\", \"dataType\": \"TEXT\"}]}";
+				+ "{\"index\": 3, \"name\": \"FN\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"TRIM\"}, {\"type\":\"UPPERCASE\"}, {\"type\":\"REMOVE_ACCENTS\"}, {\"type\":\"REMOVE_SPECIAL_CHARS\"}, {\"type\":\"TRUNCATE\",\"from\":0,\"to\":20} ]}]}";
 		final Path jsonPath = dir.resolve("config.json");
 		Files.writeString(jsonPath, json, StandardCharsets.UTF_8);
 		jsonPath.toFile().deleteOnExit();

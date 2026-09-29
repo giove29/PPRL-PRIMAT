@@ -1,0 +1,50 @@
+{
+  "_note": "Encoding comune a tutti i DO coinvolti - test febrl4_1_mixed su tutte le 6 colonne QID gia' dichiarate in party_org_clean.json/party_org1_dirty.json (given_name, surname, suburb, postcode, state, date_of_birth). La catena di preprocessing per colonna vive nello schema per-DO (do_<party>.json), non qui.",
+  "bloomFilter": {
+    "length": 1024,
+    "hardeningChain": []
+  },
+  "missingValueHandling": {
+    "enabled": false,
+    "anchorPriority": []
+  },
+  "hmacKey": "SMU_FEBRL4_1_MIXED_TEST_KEY",
+  "columns": {
+    "given_name": {
+      "hashFunctions": 25,
+      "salt": "GIVEN_NAME_",
+      "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 },
+      "missingValueTokenCount": 6
+    },
+    "surname": {
+      "hashFunctions": 25,
+      "salt": "SURNAME_",
+      "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 },
+      "missingValueTokenCount": 6
+    },
+    "suburb": {
+      "hashFunctions": 6,
+      "salt": "SUBURB_",
+      "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 },
+      "missingValueTokenCount": 6
+    },
+    "postcode": {
+      "hashFunctions": 6,
+      "salt": "POSTCODE_",
+      "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 },
+      "missingValueTokenCount": 6
+    },
+    "state": {
+      "hashFunctions": 3,
+      "salt": "STATE_",
+      "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 },
+      "missingValueTokenCount": 6
+    },
+    "date_of_birth": {
+      "hashFunctions": 25,
+      "salt": "DATE_OF_BIRTH_",
+      "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 },
+      "missingValueTokenCount": 6
+    }
+  }
+}

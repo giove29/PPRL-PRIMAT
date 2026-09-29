@@ -9,11 +9,15 @@ package de.uni_leipzig.dbs.pprl.primat.dataowner.service.config;
  * dichiarato nel JSON di configurazione del Data Owner. Guida la costruzione
  * dello schema di lettura ({@code NamedRecordSchemaConfiguration}): i primi
  * tre valori mappano su {@code NonQidAttributeType}, {@code QID} rappresenta
- * un attributo quasi-identificatore da normalizzare e codificare nell'RBF.
+ * un attributo quasi-identificatore da normalizzare e codificare nell'RBF,
+ * {@code RAW} un attributo letto solo come materiale grezzo per il primo
+ * step MERGE/SPLIT del {@code preprocessing} di una colonna QID virtuale
+ * (mai codificato da solo, vedi {@link PreprocessingStepFactory}).
  */
 public enum ColumnRole {
 	PARTY,
 	GLOBAL_ID,
 	ID,
-	QID
+	QID,
+	RAW
 }
