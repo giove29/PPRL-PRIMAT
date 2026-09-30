@@ -416,11 +416,11 @@ public final class DataOwnerConfigLoader {
 						+ ") incompatibile con 'bloomFilter.length' (" + bfLength + ") in " + jsonPath);
 			}
 			if (foldCount > 1) {
-				System.out.println("ATTENZIONE: XOR-Folding con foldCount=" + foldCount
+				System.out.println("Attenzione: XOR-Folding con foldCount=" + foldCount
 						+ " e' rischioso a livello di performance e puo' degradare eccessivamente i dati (perdita di informazione nell'RBF).");
 			}
 			System.out.println(
-					"ATTENZIONE: XOR-Folding attivo - 'rbfSize' nella configurazione della Linkage Unit deve essere "
+					"Attenzione: XOR-Folding attivo - 'rbfSize' nella configurazione della Linkage Unit deve essere "
 							+ (bfLength >> foldCount) + " (= " + bfLength + " >> " + foldCount
 							+ "), cosi' il blocking usa la reale dimensione dell'RBF dopo il folding.");
 			return new XorFolder(foldCount);

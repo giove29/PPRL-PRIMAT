@@ -30,8 +30,10 @@ import de.uni_leipzig.dbs.pprl.primat.dataowner.service.io.JdbcRecordSource;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.io.RecordSource;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttClientWrapper;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttTopics;
+import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.CheckVersionCommand;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.ConfigAck;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.ConfigPush;
+import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.ConfigVersionReport;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.RbfCodec;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.RbfPayload;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.StartCommand;
@@ -57,6 +59,17 @@ public class DataOwnerService {
 	 * cambiare a meta' strada.
 	 */
 	private volatile DataOwnerConfig config;
+	/**
+	 * Versione dell'ultima {@link ConfigPush} accettata da questo processo,
+	 * riportata alla SMU su richiesta ({@link #start()}, topic {@link
+	 * MqttTopics#checkVersionTopic}). Sentinella {@code "0"} se nessuna push
+	 * e' mai stata accettata da quando il processo e' partito — tracciata solo
+	 * in memoria, non persistita nel file di configurazione: un riavvio del
+	 * processo richiede quindi un nuovo reconfigure prima del prossimo run,
+	 * anche se il file su disco ha gia' il contenuto giusto (comportamento
+	 * conservativo scelto deliberatamente, vedi CLAUDE.md).
+	 */
+	private volatile String appliedConfigVersion = "0";
 	private final Path configPath;
 	private final MqttClientWrapper client;
 	private final Gson gson = new Gson();
@@ -125,17 +138,32 @@ public class DataOwnerService {
 					ConfigPush.class);
 			configExecutor.submit(() -> handleConfigPush(push));
 		});
+		client.subscribe(MqttTopics.checkVersionTopic(config.getParty()), (topic, message) -> {
+			// Lettura volatile + publish, O(1): nessun accesso a disco/pipeline che
+			// possa bloccare il thread di callback Paho, quindi risponde qui
+			// direttamente, senza passare da un executor dedicato (a differenza di
+			// handleStartCommand/handleConfigPush).
+			try {
+				client.publish(MqttTopics.versionReportTopic(config.getParty()),
+						gson.toJson(new ConfigVersionReport(config.getParty(), appliedConfigVersion)));
+			} catch (MqttException e) {
+				System.err.println("[" + config.getParty() + "] impossibile rispondere al checkVersion: "
+						+ e.getMessage());
+			}
+		});
 		System.out.println("[" + config.getParty() + "] in ascolto su " + MqttTopics.commandTopic(config.getParty())
-				+ " e " + MqttTopics.configTopic(config.getParty()));
+				+ ", " + MqttTopics.configTopic(config.getParty()) + " e "
+				+ MqttTopics.checkVersionTopic(config.getParty()));
 	}
 
 	/**
 	 * Esegue la pipeline locale e pubblica l'RBF risultante per il run
-	 * richiesto. Eventuali errori vengono comunicati alla Linkage Unit tramite
-	 * {@link StatusMessage} sul topic di stato del run, senza interrompere
-	 * l'ascolto per i run successivi.
+	 * richiesto (destinato alla Linkage Unit). Esito e eventuali errori
+	 * vengono sempre comunicati alla SMU tramite {@link StatusMessage} sul
+	 * topic di stato del run, senza interrompere l'ascolto per i run
+	 * successivi.
 	 *
-	 * @param command comando di avvio ricevuto dalla Linkage Unit
+	 * @param command comando di avvio ricevuto dalla SMU
 	 */
 	private void handleStartCommand(StartCommand command) {
 		final DataOwnerConfig cfg = this.config;
@@ -152,7 +180,7 @@ public class DataOwnerService {
 			final RbfPayload payload = new RbfPayload(runId, cfg.getParty(), rbfRecords, cfg.computeConfigHash());
 			client.publish(MqttTopics.rbfTopic(runId, cfg.getParty()), gson.toJson(payload));
 
-			client.publish(MqttTopics.statusTopic(runId, cfg.getParty()),
+			client.publish(MqttTopics.doRunStatusTopic(cfg.getParty()),
 					gson.toJson(new StatusMessage(runId, cfg.getParty(), "DONE", rbfRecords.size() + " record")));
 			System.out.println("[" + cfg.getParty() + "] RBF pubblicato (" + rbfRecords.size() + " record) su "
 					+ MqttTopics.rbfTopic(runId, cfg.getParty()));
@@ -160,7 +188,7 @@ public class DataOwnerService {
 			System.err.println("[" + cfg.getParty() + "] errore durante l'elaborazione del run " + runId + ":");
 			e.printStackTrace();
 			try {
-				client.publish(MqttTopics.statusTopic(runId, cfg.getParty()),
+				client.publish(MqttTopics.doRunStatusTopic(cfg.getParty()),
 						gson.toJson(new StatusMessage(runId, cfg.getParty(), "FAILED", e.getMessage())));
 			} catch (MqttException publishFailure) {
 				System.err.println("[" + cfg.getParty() + "] impossibile pubblicare lo stato di errore: "
@@ -204,9 +232,11 @@ public class DataOwnerService {
 
 			Files.move(tempPath, configPath, StandardCopyOption.REPLACE_EXISTING);
 			this.config = newConfig;
+			this.appliedConfigVersion = push.getVersion();
 			client.publish(MqttTopics.configAckTopic(party),
 					gson.toJson(new ConfigAck(party, push.getVersion(), "OK", "configurazione applicata")));
 			System.out.println("[" + party + "] configurazione v" + push.getVersion() + " applicata con successo");
+			System.out.println(newConfig.describe());
 		} catch (DataOwnerConfigException | IOException | MqttException | RuntimeException e) {
 			deleteQuietly(tempPath);
 			System.err.println("[" + party + "] push di configurazione v" + push.getVersion() + " rifiutata: "

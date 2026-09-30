@@ -31,7 +31,7 @@ public class LinkageUnitConfig {
 	private final List<Party> parties;
 	private final ClusteringMethod clusteringMethod;
 	private final SimilarityThresholdSpec thresholdSpec;
-	private final int rbfSize;
+	private int rbfSize;
 	private final int lshKeySize;
 	private final int lshKeys;
 	private final long lshSeed;
@@ -129,6 +129,21 @@ public class LinkageUnitConfig {
 	 */
 	public int getRbfSize() {
 		return rbfSize;
+	}
+
+	/**
+	 * Riconfigura a caldo la dimensione autorevole dell'RBF, sovrascrivendo il
+	 * valore caricato dal JSON locale: usato da {@code
+	 * LinkageUnitOrchestrator#handleLuConfigPush} quando la SMU comunica un
+	 * {@code rbfSize} diverso (es. dopo l'attivazione di un hardening XOR-fold
+	 * lato Data Owner) — la SMU resta l'unica fonte di verità per un run in
+	 * corso, il JSON locale è solo il valore di partenza. Rimane in vigore
+	 * anche per i run successivi nello stesso processo (mai persistito su
+	 * disco), mirror del comportamento di {@code DataOwnerService} su un
+	 * {@code ConfigPush}.
+	 */
+	public void setRbfSize(int rbfSize) {
+		this.rbfSize = rbfSize;
 	}
 
 	public int getLshKeySize() {

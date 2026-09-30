@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""SMU (Schema Mapping Unit) - modulo Python, funzionalita' "Configura i DO".
+"""SMU (Schema Mapping Unit) - modulo Python, funzionalita' "Configura i DO"
+e "Avvia esecuzione" (protocollo StartCommand).
 
 Possiede uno schema per ciascun Data Owner (config/do_<party>.json: il
 mapping colonna->QID, index/name/role, con la catena di preprocessing
@@ -15,6 +16,13 @@ La SMU decide e spinge unilateralmente: l'ack di ciascun DO
 ("primat/smu/{party}/ack") e' solo conferma tecnica che il file locale e'
 stato riscritto/ricaricato con successo, mai un consenso.
 
+La funzionalita' "Avvia esecuzione" (run_start_command) e' la regia
+dell'intero protocollo di run: verifica che tutti i DO abbiano gia' applicato
+l'ultima configurazione (checkVersion), spinge digest atteso + rbfSize alla
+Linkage Unit, pubblica il vero StartCommand ai DO, e attende l'esito finale
+(dalla Linkage Unit o da un errore di un DO) - qualunque errore lungo il
+percorso interrompe il run e riporta il menu, senza propagare eccezioni.
+
 Vedi SOTA_RICALCOLO_CLUSTER_INCREMENTALE.md e CLAUDE.md per il contesto di
 design completo.
 """
@@ -26,6 +34,7 @@ import json
 import os
 import threading
 import time
+import uuid
 
 import paho.mqtt.client as mqtt
 
@@ -36,6 +45,9 @@ ENCODING_PATH = os.path.join(CONFIG_DIR, "encoding.json")
 MQTT_HOST = "localhost"
 MQTT_PORT = 1883
 ACK_TIMEOUT_SECONDS = 15
+VERSION_CHECK_TIMEOUT_SECONDS = 15
+LU_CONFIG_ACK_TIMEOUT_SECONDS = 15
+RUN_TIMEOUT_SECONDS = 300
 
 # Stessa chiave hardcoded di DeterministicHashing.DEFAULT_KEY (Java,
 # primat-common/.../utils/DeterministicHashing.java) - usata SOLO per il
@@ -49,8 +61,7 @@ DEFAULT_BLIP_SEED = 42
 
 
 # --------------------------------------------------------------------------
-# Topic MQTT (mirror di MqttTopics.java: primat/do/{party}/config,
-# primat/smu/{party}/ack)
+# Topic MQTT (mirror di MqttTopics.java)
 # --------------------------------------------------------------------------
 
 def config_topic(party):
@@ -63,6 +74,34 @@ def config_ack_topic(party):
 
 def config_ack_topic_wildcard():
     return "primat/smu/+/ack"
+
+
+def command_topic(party):
+    return "primat/do/" + party + "/cmd"
+
+
+def check_version_topic(party):
+    return "primat/do/" + party + "/checkversion"
+
+
+def version_report_topic_wildcard():
+    return "primat/smu/+/version"
+
+
+def do_run_status_topic_wildcard():
+    return "primat/smu/+/run"
+
+
+def lu_config_topic():
+    return "primat/lu/config"
+
+
+def lu_config_ack_topic():
+    return "primat/smu/lu/config-ack"
+
+
+def lu_run_status_topic():
+    return "primat/smu/lu/run-status"
 
 
 # --------------------------------------------------------------------------
@@ -98,6 +137,16 @@ def next_version():
     with open(STATE_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
     return str(state["version"])
+
+
+def last_applied_version():
+    """Ultima versione confermata OK da TUTTI i DO (scritta da
+    run_configure_dos() solo al termine di un push 100% riuscito) - diversa
+    dal contatore 'version' sopra, che avanza anche sui tentativi falliti.
+    None se 'Configura i DO' non e' mai stata completata con successo."""
+    if not os.path.exists(STATE_PATH):
+        return None
+    return _load_json(STATE_PATH).get("lastAppliedVersion")
 
 
 def build_config_push(party):
@@ -256,6 +305,22 @@ def compute_config_hash(bloom_filter, missing_value_handling, qid_columns):
     return base64.b64encode(digest).decode("ascii")
 
 
+def compute_effective_rbf_size(bloom_filter):
+    """Mirror di DataOwnerConfig#computeEffectiveRbfBitLength() (Java): la
+    lunghezza dichiarata in bloomFilter.length, ridotta da ogni step XOR_FOLD
+    della catena di hardening (BLIP non altera la lunghezza)."""
+    length = bloom_filter["length"]
+    chain = bloom_filter.get("hardeningChain") or []
+    if not chain:
+        single = bloom_filter.get("hardening")
+        if single and single.get("type") not in (None, "NONE"):
+            chain = [single]
+    for step in chain:
+        if step.get("type") == "XOR_FOLD":
+            length = length >> step["foldCount"]
+    return length
+
+
 # --------------------------------------------------------------------------
 # MQTT
 # --------------------------------------------------------------------------
@@ -266,6 +331,60 @@ def _new_client(client_id):
     except AttributeError:
         # paho-mqtt < 2.0: nessun CallbackAPIVersion.
         return mqtt.Client(client_id=client_id)
+
+
+def _publish_and_await_acks(client_id, publish_steps, subscribe_topics, correlation_fn, expected_keys,
+                             timeout_seconds):
+    """Pattern comune a 'pubblica su N destinatari, attendi le risposte
+    correlate' - usato dal protocollo StartCommand (checkVersion, push di
+    configurazione alla LU, attesa dell'esito finale). 'run_configure_dos()'
+    ha una propria copia inline di questo stesso pattern (precedente
+    all'introduzione di questo helper, gia' verificata) e non e' stata
+    toccata per non rischiare una regressione su codice funzionante.
+
+    - publish_steps: lista di (topic, payload_dict) pubblicati dopo la subscribe.
+    - subscribe_topics: lista di topic filter da sottoscrivere (qos=1).
+    - correlation_fn(topic, payload) -> chiave o None: None = messaggio
+      ignorato: non e' un messaggio che ci interessa; una chiave gia' vista
+      resta ignorata dal dedup qui sotto.
+    - expected_keys: insieme di chiavi che, una volta tutte viste, completano
+      l'attesa (l'Event si attiva quando 'expected_keys' e' un sottoinsieme
+      delle chiavi ricevute).
+    - Ritorna (completed: bool, received: dict[chiave -> (topic, payload)]).
+    """
+    received = {}
+    event = threading.Event()
+
+    def on_connect(client, userdata, flags, rc, *args):
+        for topic in subscribe_topics:
+            client.subscribe(topic, qos=1)
+
+    def on_message(client, userdata, msg):
+        try:
+            payload = json.loads(msg.payload.decode("utf-8"))
+        except json.JSONDecodeError:
+            return
+        key = correlation_fn(msg.topic, payload)
+        if key is None or key in received:
+            return
+        received[key] = (msg.topic, payload)
+        if expected_keys <= received.keys():
+            event.set()
+
+    client = _new_client(client_id)
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.connect(MQTT_HOST, MQTT_PORT)
+    client.loop_start()
+    try:
+        time.sleep(0.5)  # lascia atterrare la subscribe prima di pubblicare
+        for topic, payload in publish_steps:
+            client.publish(topic, json.dumps(payload), qos=1)
+        completed = event.wait(timeout=timeout_seconds)
+    finally:
+        client.loop_stop()
+        client.disconnect()
+    return completed, received
 
 
 # --------------------------------------------------------------------------
@@ -355,9 +474,213 @@ def run_configure_dos():
     print("Configurazione v" + version + " completata su tutti i DO (" + ", ".join(parties) + ")")
     print("Digest atteso (per il confronto futuro con la LU): " + expected_digest)
 
+    state = _load_json(STATE_PATH) if os.path.exists(STATE_PATH) else {"version": 0}
+    state["lastAppliedVersion"] = version
+    with open(STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+
+
+def force_bump_version():
+    """Utility di solo sviluppo/test: incrementa 'version' e allinea subito
+    'lastAppliedVersion' allo stesso valore, senza alcuna pubblicazione MQTT
+    verso i DO - serve a simulare rapidamente una modifica fatta a mano ai
+    JSON di configurazione (encoding.json/do_<party>.json), senza dover
+    aspettare che i DO siano su e raggiungibili solo per far avanzare il
+    numero di versione. Quando la configurazione sara' gestita da
+    un'interfaccia vera, l'incremento sara' automatico ad ogni modifica
+    salvata e questa utility non servira' piu'."""
+    version = next_version()
+    state = _load_json(STATE_PATH)
+    state["lastAppliedVersion"] = version
+    with open(STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+    print("Versione locale aggiornata a v" + version + " (solo SMU, nessun invio ai DO).")
+
+
+# --------------------------------------------------------------------------
+# Funzionalita' 2: Avvia esecuzione (StartCommand)
+#
+# 1) checkVersion su tutti i DO, confrontata con l'ultima versione
+#    confermata da 'Configura i DO' (last_applied_version()); un solo DO non
+#    allineato ferma tutto qui, nessun ulteriore passo.
+# 2) ricalcola (mai una cache) il digest atteso + l'rbfSize effettivo dalla
+#    stessa coppia do_<party>.json/encoding.json di 'Configura i DO', cosi'
+#    un eventuale drift sul disco tra le due funzionalita' viene rilevato
+#    subito invece di propagare un digest stantio.
+# 3) spinge digest atteso + rbfSize alla Linkage Unit, attende il suo ack.
+# 4) pubblica il vero StartCommand ai DO (fire-and-forget: nessun ack e'
+#    definito per questo passo, l'esito arriva piu' tardi dalla LU o da un
+#    DO che segnala un errore).
+# 5) attende l'esito finale: la Linkage Unit (successo o errore, es. digest
+#    non corrispondente/matching fallito) OPPURE un errore da un qualunque
+#    DO - la prima delle due che arriva chiude l'attesa.
+# --------------------------------------------------------------------------
+
+def _phase_check_version(parties, expected_version):
+    print("Verifica versione dei DO (attesa: v" + expected_version + ")...")
+    publish_steps = [(check_version_topic(p), {"timestamp": int(time.time() * 1000)}) for p in parties]
+
+    def correlate(topic, payload):
+        party = payload.get("party")
+        return party if party in parties else None
+
+    completed, received = _publish_and_await_acks(
+        "primat-smu-checkversion", publish_steps, [version_report_topic_wildcard()],
+        correlate, set(parties), VERSION_CHECK_TIMEOUT_SECONDS)
+    if not completed:
+        missing = [p for p in parties if p not in received]
+        print("ERRORE: timeout in attesa della versione di: " + ", ".join(missing))
+        return False
+
+    outdated = [p for p, (_, payload) in received.items() if payload.get("appliedVersion") != expected_version]
+    if outdated:
+        print("I seguenti DO non sono aggiornati alla versione v" + expected_version
+              + ", eseguire prima 'Configura i DO': " + ", ".join(sorted(outdated)))
+        return False
+
+    print("Tutti i DO sono aggiornati alla versione v" + expected_version + ".")
+    return True
+
+
+def _phase_recompute_expected(parties):
+    """Ricalcola digest atteso + rbfSize effettivo, stesso identico
+    procedimento di run_configure_dos() (mai una cache): vedi motivazione nel
+    docstring del modulo/CLAUDE.md."""
+    digests = {}
+    rbf_sizes = {}
+    for party in parties:
+        try:
+            config_fragment, qid_columns = build_config_push(party)
+        except (OSError, KeyError, ValueError) as e:
+            print("ERRORE nel ricalcolo della configurazione per " + party + ": " + str(e))
+            return None, None
+        digests[party] = compute_config_hash(config_fragment["bloomFilter"],
+                                              config_fragment["missingValueHandling"], qid_columns)
+        try:
+            rbf_sizes[party] = compute_effective_rbf_size(config_fragment["bloomFilter"])
+        except (KeyError, ValueError) as e:
+            print("ERRORE nel calcolo di rbfSize per " + party + ": " + str(e))
+            return None, None
+
+    distinct_digests = set(digests.values())
+    if len(distinct_digests) > 1:
+        print("ERRORE INTERNO: digest calcolati diversi tra i DO nonostante lo stesso encoding.json")
+        return None, None
+    distinct_sizes = set(rbf_sizes.values())
+    if len(distinct_sizes) > 1:
+        print("ERRORE INTERNO: rbfSize calcolati diversi tra i DO nonostante lo stesso encoding.json")
+        return None, None
+    return next(iter(distinct_digests)), next(iter(distinct_sizes))
+
+
+def _phase_push_lu_config(run_id, expected_digest, rbf_size):
+    print("Invio configurazione del run alla Linkage Unit (rbfSize=" + str(rbf_size) + ")...")
+    payload = {"runId": run_id, "expectedDigest": expected_digest, "rbfSize": rbf_size}
+
+    def correlate(topic, payload_in):
+        return "LU"
+
+    completed, received = _publish_and_await_acks(
+        "primat-smu-lu-config", [(lu_config_topic(), payload)], [lu_config_ack_topic()],
+        correlate, {"LU"}, LU_CONFIG_ACK_TIMEOUT_SECONDS)
+    if not completed:
+        print("ERRORE: timeout in attesa dell'ack di configurazione dalla Linkage Unit")
+        return False
+
+    _, ack = received["LU"]
+    if ack.get("status") != "OK":
+        print("ERRORE: la Linkage Unit ha rifiutato la configurazione del run: " + str(ack.get("detail")))
+        return False
+
+    print("Linkage Unit pronta per il run " + run_id + ".")
+    return True
+
+
+def _phase_start_dos(run_id, parties):
+    print("Avvio StartCommand per: " + ", ".join(parties))
+    client = _new_client("primat-smu-start")
+    try:
+        client.connect(MQTT_HOST, MQTT_PORT)
+        client.loop_start()
+        time.sleep(0.5)
+        for party in parties:
+            payload = {"runId": run_id, "timestamp": int(time.time() * 1000)}
+            client.publish(command_topic(party), json.dumps(payload), qos=1)
+            print("  StartCommand inviato a " + party + " su " + command_topic(party))
+        return True
+    except OSError as e:
+        print("ERRORE nell'invio dello StartCommand: " + str(e))
+        return False
+    finally:
+        client.loop_stop()
+        client.disconnect()
+
+
+def _phase_wait_lu_result(run_id):
+    print("In attesa dell'esito del run " + run_id + " (Linkage Unit)...")
+    outcome = {}
+
+    def correlate(topic, payload):
+        if "source" in outcome:
+            return None  # esito gia' deciso, ignora qualunque messaggio successivo
+        if topic == lu_run_status_topic():
+            outcome["source"] = "LU"
+            outcome["payload"] = payload
+            return "STOP"
+        # Unico altro topic sottoscritto qui sotto: do_run_status_topic_wildcard()
+        # (un DO che riporta l'esito - successo o errore - di un run).
+        if payload.get("status") == "FAILED":
+            outcome["source"] = "DO"
+            outcome["payload"] = payload
+            return "STOP"
+        return None
+
+    completed, _ = _publish_and_await_acks(
+        "primat-smu-wait-result", [], [lu_run_status_topic(), do_run_status_topic_wildcard()],
+        correlate, {"STOP"}, RUN_TIMEOUT_SECONDS)
+
+    if not completed:
+        print("ERRORE: timeout in attesa dell'esito del run " + run_id)
+        return
+    if outcome.get("source") == "DO":
+        payload = outcome["payload"]
+        print("ERRORE: il Data Owner " + str(payload.get("party")) + " ha fallito il run: "
+              + str(payload.get("detail")))
+        return
+
+    payload = outcome["payload"]
+    if payload.get("status") == "OK":
+        print("Run " + run_id + " completato con successo: " + str(payload.get("detail")))
+    else:
+        print("ERRORE: la Linkage Unit ha rifiutato/fallito il run: " + str(payload.get("detail")))
+
 
 def run_start_command():
-    print("Funzionalita' 2 (inoltro StartCommand + digest alla LU) non ancora implementata.")
+    parties = discovered_parties()
+    if not parties:
+        print("Nessuno schema DO trovato in config/do_*.json")
+        return
+
+    expected_version = last_applied_version()
+    if expected_version is None:
+        print("ERRORE: nessuna configurazione confermata su tutti i DO. Eseguire prima 'Configura i DO'.")
+        return
+
+    if not _phase_check_version(parties, expected_version):
+        return
+
+    expected_digest, rbf_size = _phase_recompute_expected(parties)
+    if expected_digest is None:
+        return
+
+    run_id = str(uuid.uuid4())
+    if not _phase_push_lu_config(run_id, expected_digest, rbf_size):
+        return
+
+    if not _phase_start_dos(run_id, parties):
+        return
+
+    _phase_wait_lu_result(run_id)
 
 
 # --------------------------------------------------------------------------
@@ -368,13 +691,16 @@ def main():
     while True:
         print("\n=== PRIMAT SMU ===")
         print("1) Configura i DO")
-        print("2) Avvia esecuzione (StartCommand) - non ancora implementato")
+        print("2) Avvia esecuzione (StartCommand)")
+        print("3) Aggiorna versione (solo test/dev, salta l'invio ai DO)")
         print("0) Esci")
         choice = input("> ").strip()
         if choice == "1":
             run_configure_dos()
         elif choice == "2":
             run_start_command()
+        elif choice == "3":
+            force_bump_version()
         elif choice == "0":
             break
         else:

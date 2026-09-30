@@ -5,6 +5,7 @@
 package de.uni_leipzig.dbs.pprl.primat.dataowner.service;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import de.uni_leipzig.dbs.pprl.primat.common.utils.DeterministicHashing;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hardening.BloomFilterHardener;
@@ -286,6 +287,31 @@ public class DataOwnerConfig {
 					.append("]\n");
 		}
 		sb.append("=======================================================");
+		return sb.toString();
+	}
+
+	/**
+	 * Versione concisa di {@link #describe()}, pensata per essere ristampata
+	 * ad ogni {@link de.uni_leipzig.dbs.pprl.primat.mqtt.dto.ConfigPush}
+	 * accettata (non solo all'avvio): una riga sola, senza banner ne'
+	 * ripetizione per esteso dei parametri di ogni colonna.
+	 *
+	 * @return riepilogo su una riga della configurazione attiva
+	 */
+	public String describeCompact() {
+		final StringBuilder sb = new StringBuilder();
+		sb.append("RBF ").append(bloomFilterLength).append("bit");
+		sb.append(", hardening ").append(hardeningDescriptions.isEmpty() ? "off"
+				: String.join(">", hardeningDescriptions));
+		sb.append(", missing-value ").append(missingValueHandlingEnabled ? "on" : "off");
+		final List<ColumnConfig> qidColumns = columns.stream()
+				.filter(c -> c.getRole() == ColumnRole.QID)
+				.collect(Collectors.toList());
+		sb.append(", ").append(qidColumns.size()).append(" colonne QID: ");
+		sb.append(qidColumns.stream()
+				.map(c -> c.getName() + "(h=" + c.getHashFunctionsOrDefault()
+						+ (c.isConstantWeightEncodingEnabled() ? ",cwe" : "") + ")")
+				.collect(Collectors.joining(", ")));
 		return sb.toString();
 	}
 }

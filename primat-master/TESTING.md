@@ -42,7 +42,7 @@ Un terminale dedicato, dalla root del reactor; resta in ascolto fino a Ctrl+C (p
 
 Output atteso: `Broker MQTT in ascolto su tcp://0.0.0.0:1883 (Ctrl+C per fermarlo)`. Il broker è non persistente (i messaggi non sopravvivono a un suo riavvio). Data Owner e Linkage Unit lo raggiungono tramite `mqttBrokerUrl` nel proprio JSON (deve puntare a host/porta del broker; se cambi la porta qui, cambiala in tutti i JSON).
 
-**Ordine di avvio**: il broker deve partire prima di tutto il resto, ma solo per la Linkage Unit — se manca, la LU fallisce dopo `mqtt.brokerConnectTimeoutSeconds` (default 30s) con `Broker MQTT non raggiungibile su ...`. I Data Owner invece ritentano all'infinito (ogni 2s) e si connettono appena il broker sale. Una volta up il broker, Data Owner e Linkage Unit possono partire in qualsiasi ordine: la LU si sottoscrive agli RBF prima di pubblicare e ripubblica il comando a ogni `rbfRepublishIntervalSeconds` finché tutti i Data Owner non rispondono.
+**Ordine di avvio**: il broker deve partire prima di tutto il resto, ma solo per la Linkage Unit — se manca, la LU fallisce dopo `mqtt.brokerConnectTimeoutSeconds` (default 30s) con `Broker MQTT non raggiungibile su ...`. I Data Owner invece ritentano all'infinito (ogni 2s) e si connettono appena il broker sale. Una volta up il broker, Data Owner e Linkage Unit possono partire in qualsiasi ordine — dal 2026-09-29 nessuno dei due innesca un run da solo: la Linkage Unit resta in ascolto della configurazione di run che la SMU le spinge (vedi sezione 4bis), i Data Owner restano in ascolto del vero `StartCommand`, sempre pubblicato dalla SMU dopo l'ack della LU.
 
 ## 3. Avvio dei Data Owner
 
@@ -72,7 +72,24 @@ Un JSON non valido (file assente, sintassi errata, colonne inconsistenti, ...) t
 
 **Nota importante**: i Data Owner possono essere avviati anche PRIMA del broker — `MqttClientWrapper.connect()` ritenta la connessione all'infinito (ogni 2s) finché non è raggiungibile. Il broker va comunque avviato (sezione 2bis) prima di far partire la Linkage Unit.
 
-Output atteso per ciascun Data Owner all'avvio: prima un riepilogo leggibile dell'intera configurazione ereditata dal JSON (`DataOwnerConfig.describe()`, 2026-09-22) — party, broker, sorgente dati, RBF length, hardening (`Off` o `On -> STEP(parametri)`), missing-value handling (`On`/`Off` + `anchorPriority`), e per ogni colonna QID `preprocessing`/`hashFunctions`/`salt`/CWE (`On`/`Off` + soglie)/`missingValueTokenCount` — poi `[A] in ascolto su primat/do/A/cmd`.
+Output atteso per ciascun Data Owner all'avvio: prima un riepilogo leggibile dell'intera configurazione ereditata dal JSON (`DataOwnerConfig.describe()`, 2026-09-22) — party, broker, sorgente dati, RBF length, hardening (`Off` o `On -> STEP(parametri)`), missing-value handling (`On`/`Off` + `anchorPriority`), e per ogni colonna QID `preprocessing`/`hashFunctions`/`salt`/CWE (`On`/`Off` + soglie)/`missingValueTokenCount` — poi `[A] in ascolto su primat/do/A/cmd, primat/do/A/config e primat/do/A/checkversion` (2026-09-29: i due topic aggiuntivi sono per il push di configurazione e il checkVersion, entrambi guidati dalla SMU, vedi sezione 3bis). Ogni `ConfigPush` accettata ristampa anche un riepilogo conciso su una riga (`DataOwnerConfig.describeCompact()`).
+
+## 3bis. Avvio della SMU (necessaria per configurare i Data Owner e avviare un run)
+
+Un terminale dedicato, con Python 3 e `paho-mqtt` installati (`pip install paho-mqtt`), dalla cartella `primat-smu`:
+
+```bash
+cd primat-smu
+python smu.py
+```
+
+Menu interattivo:
+- `1) Configura i DO` — fonde lo schema per-party (`config/do_<party>.json`) con l'encoding comune (`config/encoding.json`) e spinge la configurazione a tutti i Data Owner scoperti (un `do_<party>.json` = un party atteso); attende l'ack di ognuno con timeout, si blocca su un solo errore. **Va eseguita almeno una volta** prima di poter avviare un run (sezione 4bis) — senza una configurazione confermata, `2) Avvia esecuzione` si rifiuta subito con un errore.
+- `2) Avvia esecuzione (StartCommand)` — vedi sezione 4bis.
+- `3) Aggiorna versione (solo test/dev, salta l'invio ai DO)` — incrementa `version`/`lastAppliedVersion` in `config/state.json` senza pubblicare nulla via MQTT: utility di sviluppo per simulare rapidamente una modifica fatta a mano ai JSON (`encoding.json`/`do_<party>.json`) senza dover rilanciare `1) Configura i DO` con i Data Owner effettivamente su. **Attenzione**: dopo averla usata, i Data Owner risultano "non aggiornati" al prossimo `checkVersion` finché non si esegue davvero `1) Configura i DO` — da non usare come sostituto della push reale, solo per iterare rapidamente su modifiche locali prima di una push vera.
+- `0) Esci`.
+
+I due file `config/do_org.json`/`do_org1.json` + `config/encoding.json` già presenti nel repo sono pronti per lo scenario FEBRL4_1 mixed (party `org`/`org1`, le stesse 6 colonne QID di `party_org_clean.json`/`party_org1_dirty.json`) — nessuna modifica necessaria per il test rapido descritto in questo file.
 
 ## 4. Avvio dell'orchestratore (Linkage Unit)
 
@@ -84,17 +101,23 @@ Dal 2026-09-16 `LinkageUnitOrchestrator` è configurato via JSON (mirror del Dat
 
 Il JSON ha il campo obbligatorio top-level `"mqttBrokerUrl": "tcp://localhost:1883"` (identico ai Data Owner, endpoint del broker avviato nella sezione 2bis); la sezione opzionale `mqtt` contiene solo i tuning `brokerConnectTimeoutSeconds` (default 30), `rbfCollectionTimeoutSeconds` (30), `rbfRepublishIntervalSeconds` (3).
 
-Sostituire `mscd_ap.json` con `center_clustering.json` / `mcl.json` / `global_greedy.json` / `clip.json` per le altre 4 strategie (ciascuno un run a sé, ripetibile con gli stessi Data Owner senza riavviarli — basta rilanciare `exec:java` con un JSON diverso). `global_greedy.json`/`clip.json` richiedono party tutte `duplicateFree: true` (vincolo più stretto di MSCD-AP, che ne richiede solo una): un JSON con anche una sola party dirty viene rifiutato al caricamento con `LinkageUnitConfigException`.
+Sostituire `mscd_ap.json` con `center_clustering.json` / `mcl.json` / `global_greedy.json` / `clip.json` per le altre 4 strategie. `global_greedy.json`/`clip.json` richiedono party tutte `duplicateFree: true` (vincolo più stretto di MSCD-AP, che ne richiede solo una): un JSON con anche una sola party dirty viene rifiutato al caricamento con `LinkageUnitConfigException`.
 
-Output atteso, in ordine:
+Output atteso all'avvio (**non** un run — vedi sezione 4bis per innescarne uno):
 0. Un riepilogo leggibile dell'intera configurazione ereditata dal JSON (`LinkageUnitConfig.describe()`, 2026-09-22, mirror del Data Owner) — broker, strategia, soglia di similarità, `rbfSize`, tuning JaccardLSH, persistenza (DB o CSV), tuning MQTT, elenco party.
-1. `comando pubblicato su primat/do/<party>/cmd` (ripetuto ogni `rbfRepublishIntervalSeconds` finché non arrivano tutti gli RBF)
-2. `record ricevuti per party` — conteggio record per A/B/C
-3. `Blocking (JaccardLSH) - blocchi: N` — un solo blocker (JaccardLSH), nessun confronto con HammingLSH
-4. `Strategia scelta: <CENTER_CLUSTERING|MSCD_AP|MCL|GLOBAL_GREEDY|CLIP>`: TP/FP/recall/precision/F-measure + i cluster della Link Table. Su dataset sintetico (3 party, 29 record) MSCD-AP arriva a recall/precision/F-measure 1,000 (verificato con un run end-to-end reale). Se `persistence.enabled` è (effettivamente) `false` — sempre il caso per MCL, opzionale per gli altri 4 — viene stampata anche la riga `Link Table scritta su CSV (persistence disabled): <path assoluto>` — vedi sezione 9 per come valutare offline quel file
-5. Per rieseguire con gli stessi Data Owner (senza riavviarli) e verificare la stabilità dei `Cluster.id` tra run, rilanciare lo stesso comando con lo stesso JSON: per le 4 strategie persistenti i `Cluster.id` stampati nel secondo run devono coincidere con quelli del primo (stessi record → nessun nuovo cluster, vedi sezione 6); per MCL i `Cluster.id` **non** sono stabili tra run (nessuna persistenza, per design)
+1. `Linkage Unit in ascolto su primat/lu/config` (2026-09-29) — il processo resta in ascolto all'infinito (`awaitForever()`), pronto per uno o più run consecutivi senza essere riavviato: nessun run parte finché la SMU non spinge una configurazione di run (sezione 4bis).
 
-Output della LU (2026-09-21): ogni fase stampa un banner con i tempi (connessione DB/cluster candidati, valutazione blocking, classificazione, grafo, clustering, persistenza) e barre tqdm-style (`Classificazione`, `Clustering`, `Scrittura DB`/`Scrittura CSV`). Su stdout non-TTY (log/redirect) le barre stampano una riga ogni 10%. La riga `Fase di clustering completata` appare subito a fine clustering, prima della scrittura DB. Riferimento FEBRL4_1 mixed / MSCD_AP (89k blocchi, 6.938 cluster): DB ~6 s, blocking 1,8 s, classificazione 1,7 s, clustering 5,7 s, scrittura DB ~90 s.
+## 4bis. Avvio di un run tramite la SMU (protocollo StartCommand, 2026-09-29)
+
+Con broker, Data Owner e Linkage Unit già in ascolto (sezioni 2bis/3/4), un run si innesca solo dalla SMU — vedi sezione 3bis per l'avvio di `smu.py`. Dal menu interattivo:
+1. `1) Configura i DO` — push di schema+encoding a tutti i Data Owner (vedi sezione 8bis), obbligatoria almeno una volta prima di poter avviare un run.
+2. `2) Avvia esecuzione (StartCommand)` — esegue l'intero protocollo in sequenza, stampando ogni fase: `checkVersion` a tutti i DO (confrontata con l'ultima configurazione confermata al punto 1 — un solo DO non allineato stampa quali e si ferma, tornando al menu senza toccare nulla), push di `{runId, expectedDigest, rbfSize}` alla Linkage Unit con attesa del suo ack, il vero `StartCommand` ai DO, e infine l'attesa dell'esito (dalla Linkage Unit, o da un errore riportato da un qualunque DO) — es. `Run <uuid> completato con successo: N cluster prodotti`.
+
+Sui terminali dei Data Owner e della Linkage Unit compaiono gli stessi output di sempre (RBF pubblicato, fasi di classificazione/clustering, sezione `--- Risultati ---`); la differenza è solo su **chi comanda**: prima la Linkage Unit ripubblicava da sola lo `StartCommand` ogni `rbfRepublishIntervalSeconds`, ora lo pubblica la SMU una sola volta, dopo aver già verificato che i DO siano aggiornati e che la Linkage Unit abbia accettato la configurazione del run.
+
+Per ripetere un run (stessi Data Owner, stessa Linkage Unit, nessun riavvio di nessuno dei due processi): richiamare di nuovo `2) Avvia esecuzione` dal menu della SMU — genera un nuovo `runId` (topic RBF diversi per run, vedi `MqttTopics.rbfTopic`); per le 4 strategie persistenti i `Cluster.id` del secondo run devono coincidere con quelli del primo (stessi record → nessun nuovo cluster, vedi sezione 6); per MCL i `Cluster.id` **non** sono stabili tra run (nessuna persistenza, per design).
+
+Output della LU durante un run (2026-09-21): ogni fase stampa un banner con i tempi (connessione DB/cluster candidati, valutazione blocking, classificazione, grafo, clustering, persistenza) e barre tqdm-style (`Classificazione`, `Clustering`, `Scrittura DB`/`Scrittura CSV`). Su stdout non-TTY (log/redirect) le barre stampano una riga ogni 10%. La riga `Fase di clustering completata` appare subito a fine clustering, prima della scrittura DB. Riferimento FEBRL4_1 mixed / MSCD_AP (89k blocchi, 6.938 cluster): DB ~6 s, blocking 1,8 s, classificazione 1,7 s, clustering 5,7 s, scrittura DB ~90 s.
 
 ## 5. Come verificare la correttezza
 
@@ -104,7 +127,7 @@ Per verificare a mano: aprire i 3 CSV, individuare le entità con `GLOBAL_ID` ri
 
 ## 6. Test del comportamento long-running e della persistenza
 
-Con i Data Owner rimasti attivi tra un run e l'altro, rilanciare `exec:java` con lo stesso JSON di strategia è già il test: secondo comando pubblicato con un nuovo `runId` (topic RBF diversi per run, vedi `MqttTopics.rbfTopic`), stessi processi Data Owner, nessun riavvio.
+Con Data Owner e Linkage Unit rimasti attivi tra un run e l'altro, richiamare di nuovo `2) Avvia esecuzione` dal menu della SMU (sezione 4bis) è già il test: nuovo `runId` (topic RBF diversi per run, vedi `MqttTopics.rbfTopic`), stessi processi Data Owner/Linkage Unit, nessun riavvio.
 
 Per verificare specificamente la **persistenza** di una delle 4 strategie persistenti tra run (vedi `ARCHITECTURE_FLOW.md`):
 - con il database dedicato pulito, al primo run ogni entità genera un nuovo cluster;
