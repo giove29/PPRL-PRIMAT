@@ -210,5 +210,6 @@
       "missingValueTokenCount": 6
     }
   ],
-  "hmacKey": "SMU_FEBRL4_1_MIXED_TEST_KEY"
+  "hmacKey": "SMU_FEBRL4_1_MIXED_TEST_KEY",
+  "version": "6"
 }
