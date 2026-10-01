@@ -1,0 +1,15 @@
+{
+  "_comment_local": "File 'locale' di riferimento: elenca TUTTI i campi di competenza del file locale (mai riscritto dal processo). Vedi full_reference_live.json per il file 'live' (pushabile dalla SMU) con tutte le funzionalita' di preprocessing/encoding disponibili in un solo file, a scopo di sola documentazione - non pensato per essere eseguito cosi' com'e' (il dataSource sottostante e' illustrativo, vedi i commenti nel file live per le colonne RAW/MERGE che richiederebbe davvero).",
+  "party": "REFERENCE",
+  "debug": true,
+  "dataSource": {
+    "type": "CSV",
+    "csv": {
+      "delimiter": ";",
+      "filePath": "path/to/your/dataset.csv",
+      "hasHeader": false
+    }
+  },
+  "liveConfigPath": "full_reference_live.json",
+  "bootstrapMqttBrokerUrl": "tcp://localhost:1883"
+}

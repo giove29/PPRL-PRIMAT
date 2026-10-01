@@ -16,11 +16,7 @@
     }
   },
   "persistence": {
-    "enabled": true
-  },
-  "database": {
-    "url": "jdbc:postgresql://localhost:5432/primat_mscd_ap",
-    "user": "primat",
-    "password": "primat"
+    "enabled": false,
+    "csvOutputPath": "mscdap_debug_output.csv"
   }
 }

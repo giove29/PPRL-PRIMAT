@@ -1,0 +1,64 @@
+{
+  "_comment": "File 'live' di riferimento: mostra INSIEME, in un solo file, le funzionalita' che negli altri esempi di questa cartella sono illustrate una alla volta (example_clean=hashFunctions/salt/CWE base, example_dirty=CWE disattivata, example_db=sorgente DB, example_constant_columns=colonne PARTY/GLOBAL_ID a valore costante, example=hardeningChain+missingValueTokenCount). Puramente documentale: il dataSource del file locale associato e' un placeholder, non un CSV reale.",
+  "mqttBrokerUrl": "tcp://localhost:1883",
+  "version": "0",
+  "hmacKey": "REFERENCE_TEST_KEY",
+  "bloomFilter": {
+    "_comment": "hardeningChain: BLIP (randomized response) poi XOR_FOLD in sequenza - XOR_FOLD deve sempre essere l'ultimo step (dimezza la lunghezza e cambia il tipo di attributo risultante). 'hardening' (singolo) e 'hardeningChain' sono mutuamente esclusivi.",
+    "length": 1024,
+    "hardeningChain": [
+      { "type": "BLIP", "probability": 0.1, "seed": 42 },
+      { "type": "XOR_FOLD", "foldCount": 1 }
+    ]
+  },
+  "missingValueHandling": {
+    "_comment": "Se enabled, un attributo QID vuoto e' codificato con token sintetici deterministici (MissingValueBucketing) invece del padding fisso '___': evita che un campo mancante produca sempre lo stesso bitset. anchorPriority elenca i nomi di colonna QID (quelli finali, incluse eventuali colonne virtuali MERGE/SPLIT) in ordine di priorita' per scegliere l'anchor del bucket.",
+    "enabled": true,
+    "anchorPriority": ["full_name", "birth_year", "city"]
+  },
+  "columns": [
+    {
+      "_comment": "PARTY senza 'index' e senza 'constantValue': risolta in Java da config.getParty() (campo del file locale) - nessuna colonna fisica nel dataset associabile a PARTY.",
+      "name": "PARTY",
+      "role": "PARTY"
+    },
+    {
+      "_comment": "GLOBAL_ID senza 'index', con 'constantValue' esplicito: utile in produzione quando non esiste un Ground Truth ma la sintassi richiede comunque la colonna (qui vuota per ogni record). Senza 'constantValue' il default sarebbe comunque \"\".",
+      "name": "GLOBAL_ID",
+      "role": "GLOBAL_ID",
+      "constantValue": ""
+    },
+    { "index": 0, "name": "ID", "role": "ID" },
+    {
+      "_comment": "Colonne RAW: materiale grezzo, mai codificato da solo - consumato dal primo step MERGE/SPLIT di una colonna QID virtuale.",
+      "index": 1, "name": "given_name", "role": "RAW"
+    },
+    { "index": 2, "name": "surname", "role": "RAW" },
+    {
+      "_comment": "Colonna QID 'virtuale' (nessun 'index'): il primo step 'preprocessing' e' un MERGE che calcola il valore da given_name+surname (RAW), seguito dalla normalizzazione standard. CWE e missingValueTokenCount espliciti qui (altrimenti userebbe il default CWE.minTrigrams).",
+      "name": "full_name",
+      "role": "QID",
+      "preprocessing": [
+        { "type": "MERGE", "sources": ["given_name", "surname"], "merger": { "type": "SIMPLE", "separator": " " } },
+        { "type": "TRIM" }, { "type": "UPPERCASE" }, { "type": "REMOVE_ACCENTS" },
+        { "type": "REMOVE_SPECIAL_CHARS" }, { "type": "TRUNCATE", "from": 0, "to": 40 }
+      ],
+      "hashFunctions": 25,
+      "salt": "FULL_NAME_",
+      "constantWeightEncoding": { "enabled": true, "minTrigrams": 4, "maxTrigrams": 14 },
+      "missingValueTokenCount": 6
+    },
+    {
+      "_comment": "Colonna QID fisica, catena numerica (TRIM + REMOVE_NON_DIGITS), CWE abilitata senza missingValueTokenCount esplicito: in tal caso il 'peso' di un valore mancante riusa CWE.minTrigrams (qui 5).",
+      "index": 3, "name": "birth_year", "role": "QID",
+      "preprocessing": [ { "type": "TRIM" }, { "type": "REMOVE_NON_DIGITS" } ],
+      "hashFunctions": 25, "salt": "BIRTH_YEAR_",
+      "constantWeightEncoding": { "enabled": true, "minTrigrams": 5, "maxTrigrams": 7 }
+    },
+    {
+      "_comment": "Colonna QID fisica senza CWE/missingValueTokenCount/hashFunctions/salt espliciti: usa interamente i default (ColumnConfig.DEFAULT_HASH_FUNCTIONS, salt=name+'_', CWE off, ColumnConfig.DEFAULT_MISSING_VALUE_TOKEN_COUNT).",
+      "index": 4, "name": "city", "role": "QID",
+      "preprocessing": [ { "type": "TRIM" }, { "type": "UPPERCASE" }, { "type": "REMOVE_ACCENTS" }, { "type": "REMOVE_SPECIAL_CHARS" }, { "type": "TRUNCATE", "from": 0, "to": 20 } ]
+    }
+  ]
+}

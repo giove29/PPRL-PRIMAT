@@ -1,0 +1,16 @@
+{
+  "_note": "Schema (mapping colonna->QID) del DO 'DBLP' - dataset dblp_scholar, party_DBLP_local.json/_live.json. Party dichiarata duplicateFree:true lato Linkage Unit (~97.9% pulita, convenzione di letteratura - vedi primat-examples/src/main/resources/dblp_scholar/SCHEMA.md). index/name/role/preprocessing: la catena di preprocessing e' esplicita qui; i parametri di encoding (hashFunctions/salt/CWE/missingValueTokenCount) vengono da encoding.json.",
+  "columns": [
+    { "index": 0, "name": "PARTY", "role": "PARTY" },
+    { "index": 1, "name": "GLOBAL_ID", "role": "GLOBAL_ID" },
+    { "index": 2, "name": "ID", "role": "ID" },
+    { "index": 3, "name": "title", "role": "QID",
+      "preprocessing": [ {"type":"TRIM"}, {"type":"UPPERCASE"}, {"type":"REMOVE_ACCENTS"}, {"type":"REMOVE_SPECIAL_CHARS"}, {"type":"TRUNCATE","from":0,"to":60} ] },
+    { "index": 4, "name": "authors", "role": "QID",
+      "preprocessing": [ {"type":"TRIM"}, {"type":"UPPERCASE"}, {"type":"REMOVE_ACCENTS"}, {"type":"REMOVE_SPECIAL_CHARS"}, {"type":"TRUNCATE","from":0,"to":60} ] },
+    { "index": 5, "name": "venue", "role": "QID",
+      "preprocessing": [ {"type":"TRIM"}, {"type":"UPPERCASE"}, {"type":"REMOVE_ACCENTS"}, {"type":"REMOVE_SPECIAL_CHARS"}, {"type":"TRUNCATE","from":0,"to":60} ] },
+    { "index": 6, "name": "year", "role": "QID",
+      "preprocessing": [ {"type":"TRIM"}, {"type":"REMOVE_NON_DIGITS"} ] }
+  ]
+}

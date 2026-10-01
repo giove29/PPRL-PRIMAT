@@ -16,11 +16,7 @@
     }
   },
   "persistence": {
-    "enabled": true
-  },
-  "database": {
-    "url": "jdbc:postgresql://localhost:5432/primat_center_clustering",
-    "user": "primat",
-    "password": "primat"
+    "enabled": false,
+    "csvOutputPath": "center_clustering_debug_output.csv"
   }
 }

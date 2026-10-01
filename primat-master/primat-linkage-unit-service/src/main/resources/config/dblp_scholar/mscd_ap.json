@@ -2,11 +2,10 @@
   "mqttBrokerUrl": "tcp://localhost:1883",
   "debug": true,
   "parties": [
-    { "name": "A", "duplicateFree": true },
-    { "name": "B", "duplicateFree": true },
-    { "name": "C", "duplicateFree": true }
+    { "name": "DBLP", "duplicateFree": true },
+    { "name": "Scholar", "duplicateFree": false }
   ],
-  "clusteringMethod": "CLIP",
+  "clusteringMethod": "MSCD_AP",
   "similarityThreshold": 0.75,
   "rbfSize": 1024,
   "blocking": {
@@ -17,6 +16,6 @@
   },
   "persistence": {
     "enabled": false,
-    "csvOutputPath": "clip_debug_output.csv"
+    "csvOutputPath": "mscdap_debug_output.csv"
   }
 }

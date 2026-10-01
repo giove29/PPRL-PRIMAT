@@ -16,11 +16,7 @@
     }
   },
   "persistence": {
-    "enabled": true
-  },
-  "database": {
-    "url": "jdbc:postgresql://localhost:5432/primat_global_greedy",
-    "user": "primat",
-    "password": "primat"
+    "enabled": false,
+    "csvOutputPath": "global_greedy_debug_output.csv"
   }
 }

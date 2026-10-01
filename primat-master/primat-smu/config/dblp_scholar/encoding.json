@@ -1,0 +1,18 @@
+{
+  "_note": "Encoding comune ai DO 'DBLP'/'Scholar' - tutte e 4 le colonne QID gia' dichiarate in party_DBLP_live.json/party_Scholar_live.json (title, authors, venue, year). hashFunctions qui sotto e' PROVVISORIO (10 per tutte le colonne): da ricalcolare manualmente, non ancora tarato su questo dataset.",
+  "bloomFilter": {
+    "length": 1024,
+    "hardeningChain": []
+  },
+  "missingValueHandling": {
+    "enabled": true,
+    "anchorPriority": ["title", "authors", "venue", "year"]
+  },
+  "hmacKey": "SMU_DBLP_SCHOLAR_TEST_KEY",
+  "columns": {
+    "title":   { "hashFunctions": 10, "salt": "TITLE_",   "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
+    "authors": { "hashFunctions": 10, "salt": "AUTHORS_", "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
+    "venue":   { "hashFunctions": 10, "salt": "VENUE_",   "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
+    "year":    { "hashFunctions": 10, "salt": "YEAR_",    "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 }
+  }
+}
