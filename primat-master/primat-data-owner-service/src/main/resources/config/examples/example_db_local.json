@@ -1,0 +1,15 @@
+{
+  "party": "A",
+  "debug": true,
+  "dataSource": {
+    "type": "DB",
+    "db": {
+      "tableName": "party_a_records",
+      "jdbcUrl": "jdbc:postgresql://localhost:5432/primat",
+      "username": "primat",
+      "password": "primat"
+    }
+  },
+  "liveConfigPath": "example_db_live.json",
+  "bootstrapMqttBrokerUrl": "tcp://localhost:1883"
+}

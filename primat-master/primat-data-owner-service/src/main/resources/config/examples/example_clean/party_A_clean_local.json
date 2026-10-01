@@ -1,0 +1,13 @@
+{
+  "party": "A",
+  "debug": true,
+  "dataSource": {
+    "type": "CSV",
+    "csv": {
+      "delimiter": ";",
+      "filePath": "primat-examples/src/main/resources/synthetic_ncvr/party_A_clean.csv"
+    }
+  },
+  "liveConfigPath": "party_A_clean_live.json",
+  "bootstrapMqttBrokerUrl": "tcp://localhost:1883"
+}

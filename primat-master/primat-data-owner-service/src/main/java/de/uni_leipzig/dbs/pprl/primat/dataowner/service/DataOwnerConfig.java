@@ -43,6 +43,7 @@ public class DataOwnerConfig {
 	private final List<String> hardeningDescriptions;
 	private final String hmacKey;
 	private final String version;
+	private final boolean pending;
 
 	/**
 	 * Costruito esclusivamente da {@link DataOwnerConfigLoader} dopo la
@@ -76,12 +77,18 @@ public class DataOwnerConfig {
 	 *                                     JSON (stesso campo aggiornato da {@code DataOwnerService.handleConfigPush}
 	 *                                     ad ogni {@code ConfigPush} accettata); {@code "0"} se il file non e'
 	 *                                     mai stato toccato da una push
+	 * @param pending                      {@code true} se questa e' una configurazione "bootstrap" (il file
+	 *                                     live non esiste ancora/non e' ancora una configurazione reale, vedi
+	 *                                     {@code DataOwnerConfigLoader#loadBootstrap(Path)}) - in tal caso
+	 *                                     {@code columns}/{@code bloomFilterLength}/{@code hardener}/ecc. sono
+	 *                                     placeholder innocui, mai letti finche' {@link #isPending()} non torna
+	 *                                     {@code false}
 	 */
 	public DataOwnerConfig(String party, DataSourceType dataSourceType, String csvFilePath, boolean csvHasHeader,
 			char csvDelimiter, DbSourceConfig dbConfig, String mqttBrokerUrl, List<ColumnConfig> columns, int bloomFilterLength,
 			BloomFilterHardener hardener, boolean debug, boolean missingValueHandlingEnabled,
 			List<String> missingValueAnchorPriority, List<String> hardeningDescriptions, String hmacKey,
-			String version) {
+			String version, boolean pending) {
 		this.party = party;
 		this.dataSourceType = dataSourceType;
 		this.csvFilePath = csvFilePath;
@@ -99,6 +106,7 @@ public class DataOwnerConfig {
 		this.hardeningDescriptions = hardeningDescriptions;
 		this.hmacKey = hmacKey;
 		this.version = version;
+		this.pending = pending;
 	}
 
 	public String getParty() {
@@ -163,6 +171,17 @@ public class DataOwnerConfig {
 	/** @return versione della configurazione applicata, cosi' come scritta nel file JSON ({@code "0"} se mai aggiornata da una ConfigPush). */
 	public String getVersion() {
 		return version;
+	}
+
+	/**
+	 * @return {@code true} se il file live non esiste ancora/non e' ancora una
+	 *         configurazione reale (il Data Owner e' comunque connesso e in
+	 *         ascolto, ma {@code columns}/{@code bloomFilterLength}/
+	 *         {@code hardener}/ecc. sono placeholder - non eseguire mai una
+	 *         pipeline su una config pending, vedi {@code DataOwnerService.handleStartCommand}).
+	 */
+	public boolean isPending() {
+		return pending;
 	}
 
 	/**
@@ -253,6 +272,9 @@ public class DataOwnerConfig {
 	public String describe() {
 		final StringBuilder sb = new StringBuilder();
 		sb.append("==================== Data Owner [").append(party).append("] ====================\n");
+		if (pending) {
+			sb.append("Stato:                  NON ANCORA CONFIGURATO (in attesa della prima ConfigPush dalla SMU)\n");
+		}
 		sb.append("Versione:               ").append(version).append('\n');
 		sb.append("Broker MQTT:            ").append(mqttBrokerUrl).append('\n');
 		sb.append("Sorgente dati:          ").append(dataSourceType);
@@ -278,6 +300,10 @@ public class DataOwnerConfig {
 			sb.append(" (anchorPriority=").append(missingValueAnchorPriority).append(')');
 		}
 		sb.append('\n');
+		if (pending) {
+			sb.append("=======================================================");
+			return sb.toString();
+		}
 		sb.append("Colonne QID:\n");
 		for (final ColumnConfig column : columns) {
 			if (column.getRole() != ColumnRole.QID) {

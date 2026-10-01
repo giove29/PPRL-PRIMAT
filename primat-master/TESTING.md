@@ -46,20 +46,46 @@ Output atteso: `Broker MQTT in ascolto su tcp://0.0.0.0:1883 (Ctrl+C per fermarl
 
 ## 3. Avvio dei Data Owner
 
-Un processo per party, un solo argomento: il path del JSON di configurazione (party, broker MQTT, sorgente dati, schema colonne, tuning RBF — vedi `primat-data-owner-service/.../service/config/`). `exec-maven-plugin` è configurato nel `pom.xml` del modulo (2026-09-16), quindi non serve costruire il classpath a mano:
+Un processo per party, **un solo** argomento: il path del JSON "locale" (`party`/`debug`/
+`dataSource`, mai riscritto dal processo). Il file locale dichiara al proprio interno
+(`liveConfigPath`, relativo alla propria cartella se non assoluto) dove si trova il JSON "live"
+(`mqttBrokerUrl`/schema colonne/tuning RBF, pushabile e hot-riconfigurabile dalla SMU — vedi
+`primat-data-owner-service/.../service/config/`). `exec-maven-plugin` è configurato nel `pom.xml`
+del modulo (2026-09-16), quindi non serve costruire il classpath a mano:
 
 ```bash
-"$MVN" -pl primat-data-owner-service exec:java -Dexec.args="src/main/resources/config/examples/example_clean/party_A_clean.json"
+"$MVN" -pl primat-data-owner-service exec:java -Dexec.args="src/main/resources/config/examples/example_clean/party_A_clean_local.json"
 ```
 
-Ripetere per `party_B_clean.json` e `party_C_clean.json` (o le varianti `example_dirty/*_dirty.json`; per FEBRL vedi `config/febrl/<scenario>/party_org*.json`, party `org`/`org1`, es. `config/febrl/febrl4_1_mixed/party_org_clean.json` + `party_org1_dirty.json`) (party diversi = client MQTT diversi, vedi `DataOwnerConfig.mqttClientId = "data-owner-" + party`), ciascuno in un terminale separato (il processo resta in ascolto all'infinito). I tre JSON d'esempio replicano lo schema/tuning NCVR usato finora; per puntare a dati propri basta un nuovo JSON (vedi sezione 7) senza toccare codice.
+Ripetere per `party_B_clean`/`party_C_clean` (o le varianti `example_dirty/*_dirty`; per FEBRL vedi
+`config/febrl/<scenario>/party_org*_local.json`, party `org`/`org1`, es.
+`config/febrl/febrl4_1_mixed/party_org_clean_local.json` + `party_org1_dirty_local.json`) (party
+diversi = client MQTT diversi, vedi `DataOwnerConfig.mqttClientId = "data-owner-" + party`),
+ciascuno in un terminale separato (il processo resta in ascolto all'infinito). I tre JSON
+d'esempio replicano lo schema/tuning NCVR usato finora; per puntare a dati propri bastano due
+nuovi JSON (vedi sezione 7) senza toccare codice.
 
-Esempio di contenuto (`party_A_clean.json`, abbreviato — vedi il file per lo schema completo a 9 colonne):
+**Il file live può essere assente al primo avvio** (prima che la SMU abbia mai fatto "Configura i
+DO"): il Data Owner lo crea da solo con il solo contenuto `{"version": "NOT_FOUND"}`, si connette
+comunque al broker indicato da `bootstrapMqttBrokerUrl` (campo del file locale, usato solo finché
+non arriva una `ConfigPush` reale — da quel momento il `mqttBrokerUrl` del file live diventa quello
+autorevole e resta hot-riconfigurabile) e resta in ascolto — un `checkVersion` in questo stato
+risponde sempre `NOT_FOUND`, quindi risulta per costruzione "fuori fase" finché non arriva una
+configurazione vera. Se invece il file live esiste ma non è leggibile (permessi, percorso che punta
+a una directory, ecc.), è un errore vero e il processo termina.
+
+Esempio di contenuto (`party_A_clean_local.json` + `party_A_clean_live.json`, abbreviato — vedi i file per lo schema completo a 9 colonne):
 ```json
+// party_A_clean_local.json
 {
   "party": "A",
-  "mqttBrokerUrl": "tcp://localhost:1883",
   "dataSource": { "type": "CSV", "csv": { "filePath": "primat-examples/src/main/resources/synthetic_ncvr/party_A.csv" } },
+  "liveConfigPath": "party_A_clean_live.json",
+  "bootstrapMqttBrokerUrl": "tcp://localhost:1883"
+}
+// party_A_clean_live.json
+{
+  "mqttBrokerUrl": "tcp://localhost:1883",
   "bloomFilter": { "length": 1024, "hardening": { "type": "NONE" } },
   "columns": [
     { "index": 0, "name": "PARTY", "role": "PARTY" },
@@ -68,7 +94,10 @@ Esempio di contenuto (`party_A_clean.json`, abbreviato — vedi il file per lo s
 }
 ```
 
-Un JSON non valido (file assente, sintassi errata, colonne inconsistenti, ...) termina il processo con `Errore di configurazione: ...` ed exit code 1, senza avviare la connessione MQTT.
+Un JSON locale non valido (file assente, sintassi errata, `liveConfigPath`/`bootstrapMqttBrokerUrl`
+mancanti, ...) termina il processo con `Errore di configurazione: ...` ed exit code 1, senza
+avviare la connessione MQTT. Lo stesso vale per un file live presente ma davvero invalido (non il
+caso "assente", gestito come sopra).
 
 **Nota importante**: i Data Owner possono essere avviati anche PRIMA del broker — `MqttClientWrapper.connect()` ritenta la connessione all'infinito (ogni 2s) finché non è raggiungibile. Il broker va comunque avviato (sezione 2bis) prima di far partire la Linkage Unit.
 
@@ -89,7 +118,7 @@ Menu interattivo:
 - `3) Aggiorna versione (solo test/dev, salta l'invio ai DO)` — incrementa `version`/`lastAppliedVersion` in `config/state.json` senza pubblicare nulla via MQTT: utility di sviluppo per simulare rapidamente una modifica fatta a mano ai JSON (`encoding.json`/`do_<party>.json`) senza dover rilanciare `1) Configura i DO` con i Data Owner effettivamente su. **Attenzione**: dopo averla usata, i Data Owner risultano "non aggiornati" al prossimo `checkVersion` finché non si esegue davvero `1) Configura i DO` — da non usare come sostituto della push reale, solo per iterare rapidamente su modifiche locali prima di una push vera.
 - `0) Esci`.
 
-I due file `config/do_org.json`/`do_org1.json` + `config/encoding.json` già presenti nel repo sono pronti per lo scenario FEBRL4_1 mixed (party `org`/`org1`, le stesse 6 colonne QID di `party_org_clean.json`/`party_org1_dirty.json`) — nessuna modifica necessaria per il test rapido descritto in questo file.
+I due file `config/do_org.json`/`do_org1.json` + `config/encoding.json` già presenti nel repo sono pronti per lo scenario FEBRL4_1 mixed (party `org`/`org1`, le stesse 6 colonne QID di `party_org_clean_live.json`/`party_org1_dirty_live.json`) — nessuna modifica necessaria per il test rapido descritto in questo file.
 
 ## 4. Avvio dell'orchestratore (Linkage Unit)
 
@@ -146,7 +175,7 @@ Il CSV puo' avere uno schema di colonne qualunque (delimitatore `;`, nessun head
 - una o più colonne con `"role": "QID"` (obbligatorio almeno una), ciascuna con `"preprocessing"` obbligatorio — lista ordinata di step (`TRIM`/`UPPERCASE`/`REMOVE_ACCENTS`/`REMOVE_SPECIAL_CHARS`/`REMOVE_NON_DIGITS`/`TRUNCATE` con `from`/`to`) che costruisce esplicitamente la `NormalizerChain` applicata prima della codifica RBF, vedi `PreprocessingStepFactory` — e opzionalmente `"hashFunctions"`/`"salt"` per il tuning dell'RBF (default se omessi: `ColumnConfig.DEFAULT_HASH_FUNCTIONS` e `name + "_"`; negli esempi FEBRL il salt è esplicito e coerente per campo, es. `GIVEN_NAME_`/`SURNAME_`/`SUBURB_`/`POSTCODE_`/`STATE_`/`DATE_OF_BIRTH_`, identico tra le sorgenti `org`/`org1`), più `"constantWeightEncoding": {"enabled", "minTrigrams", "maxTrigrams"}` (opzionale, normalizza il peso dei trigrammi per quell'attributo dentro una banda) e `"missingValueTokenCount"` (opzionale, override esplicito del numero di token per un valore vuoto — altrimenti riusa `minTrigrams` della CWE se abilitata, o un default hardcoded)
 - opzionalmente, top-level, `"missingValueHandling": {"enabled", "anchorPriority": [...]}`: se abilitato, un attributo QID vuoto viene codificato con token sintetici scelti su un bucket deterministico (invece del padding fisso `"___"`), derivato dall'hash del primo attributo QID non vuoto del record secondo l'ordine di `anchorPriority` — negli esempi FEBRL (2026-09-22) `missingValueHandling.enabled` e `constantWeightEncoding.enabled` sono entrambi `false` e `minTrigrams`/`maxTrigrams` uniformati a `6`/`12` su tutte le colonne QID (valori tenuti nel JSON pronti da riattivare, `anchorPriority` presente ma inerte: `["surname","given_name","date_of_birth","suburb","postcode","state"]`)
 
-Non serve nessuna modifica di codice per cambiare i dati: basta un nuovo file JSON (`"dataSource.csv.filePath"` diverso e `columns` adattate, oppure `"type": "DB"` con `dataSource.db.{tableName,jdbcUrl,username,password}`) passato come unico argomento a `DataOwnerService`. Entrambe le sorgenti sono effettivamente lette (`CsvRecordSource`/`JdbcRecordSource`); per `DB` la tabella deve avere le colonne nello stesso ordine posizionale di `columns[].index`.
+Non serve nessuna modifica di codice per cambiare i dati: basta un nuovo file JSON locale (`"dataSource.csv.filePath"` diverso, oppure `"type": "DB"` con `dataSource.db.{tableName,jdbcUrl,username,password}`) con `liveConfigPath` che punta a un nuovo file live (`columns` adattate, o anche assente al primo avvio — vedi sezione 3), passato come unico argomento a `DataOwnerService`. Entrambe le sorgenti sono effettivamente lette (`CsvRecordSource`/`JdbcRecordSource`); per `DB` la tabella deve avere le colonne nello stesso ordine posizionale di `columns[].index`.
 
 Per cambiare invece la composizione delle party o la strategia della Linkage Unit basta un nuovo JSON di config Linkage Unit (vedi sezione 4, schema completo nel bullet 2026-09-16 di `CLAUDE.md`): `parties[].duplicateFree`, `similarityThreshold`, parametri LSH/MCL/AP/Center Clustering hanno tutti un default che riproduce il comportamento storico se omessi.
 

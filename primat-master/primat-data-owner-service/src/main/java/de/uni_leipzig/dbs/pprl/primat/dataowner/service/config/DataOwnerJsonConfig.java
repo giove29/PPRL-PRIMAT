@@ -23,6 +23,8 @@ public class DataOwnerJsonConfig {
 	private MissingValueHandlingJsonConfig missingValueHandling;
 	private String hmacKey;
 	private String version;
+	private String liveConfigPath;
+	private String bootstrapMqttBrokerUrl;
 
 	public String getParty() {
 		return party;
@@ -34,6 +36,26 @@ public class DataOwnerJsonConfig {
 
 	public DataSourceJsonConfig getDataSource() {
 		return dataSource;
+	}
+
+	/**
+	 * @return percorso (locale al file "locale" se non assoluto) del file JSON
+	 *         "live", campo di competenza esclusiva del file locale - vedi
+	 *         {@link DataOwnerConfigLoader#loadBootstrap(java.nio.file.Path)}.
+	 */
+	public String getLiveConfigPath() {
+		return liveConfigPath;
+	}
+
+	/**
+	 * @return endpoint del broker MQTT usato solo finche' il file live non
+	 *         esiste/non e' ancora una configurazione reale (vedi
+	 *         {@link DataOwnerConfigLoader#loadBootstrap(java.nio.file.Path)});
+	 *         una volta applicata la prima {@code ConfigPush} reale, il
+	 *         {@code mqttBrokerUrl} del file live diventa quello autorevole.
+	 */
+	public String getBootstrapMqttBrokerUrl() {
+		return bootstrapMqttBrokerUrl;
 	}
 
 	public BloomFilterJsonConfig getBloomFilter() {

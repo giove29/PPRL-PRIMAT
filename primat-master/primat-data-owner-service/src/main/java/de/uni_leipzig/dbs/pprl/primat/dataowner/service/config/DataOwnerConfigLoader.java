@@ -9,12 +9,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 
 import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hardening.BloomFilterHardener;
@@ -25,13 +29,16 @@ import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hardening.X
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.DataOwnerConfig;
 
 /**
- * Legge e valida il JSON di configurazione del Data Owner, producendo un
- * {@link DataOwnerConfig} pronto all'uso. Qui vive tutta la gestione degli
- * errori introdotti dalla configurazione via file (invece dei precedenti
- * argomenti posizionali da riga di comando): file mancante/non leggibile,
- * JSON malformato, campi obbligatori assenti o non validi, colonne
- * inconsistenti, parametri di tuning del Bloom Filter fuori range. Ogni
- * problema viene riportato come {@link DataOwnerConfigException} con un
+ * Legge e valida la configurazione del Data Owner, fusa da due file JSON
+ * distinti - "locale" ({@code party}/{@code debug}/{@code dataSource}, mai
+ * riscritto da questo processo) e "live" ({@code mqttBrokerUrl}/
+ * {@code columns}/{@code bloomFilter}/{@code missingValueHandling}/
+ * {@code hmacKey}/{@code version}, l'unico che {@code ConfigPush} puo'
+ * riscrivere) - producendo un {@link DataOwnerConfig} pronto all'uso. Qui
+ * vive tutta la gestione degli errori introdotti dalla configurazione via
+ * file: file mancante/non leggibile, JSON malformato, campi obbligatori
+ * assenti o non validi, colonne inconsistenti, parametri di tuning del Bloom
+ * Filter fuori range. Ogni problema viene riportato come {@link DataOwnerConfigException} con un
  * messaggio comprensibile, mai come eccezione grezza di Gson/IO.
  */
 public final class DataOwnerConfigLoader {
@@ -42,43 +49,68 @@ public final class DataOwnerConfigLoader {
 	/** Seed del PRNG di BLIP se il campo {@code seed} e' omesso nella sezione {@code hardening}. */
 	public static final long DEFAULT_BLIP_SEED = 42L;
 
+	/**
+	 * Contenuto scritto nel file live quando viene creato perche' assente
+	 * all'avvio (vedi {@link #loadBootstrap(Path)}): nessuna chiave oltre
+	 * {@code version}, cosi' un qualunque checkVersion/confronto risulta
+	 * "fuori fase" finche' non arriva una {@code ConfigPush} reale.
+	 */
+	private static final String PENDING_LIVE_FILE_CONTENT = "{\n  \"version\": \"NOT_FOUND\"\n}\n";
+
 	private DataOwnerConfigLoader() {
 	}
 
 	/**
-	 * @param jsonPath percorso del file JSON di configurazione
-	 * @return la configurazione validata
-	 * @throws DataOwnerConfigException se il file non e' leggibile, il JSON e'
-	 *                                   malformato, o il contenuto non e' valido
+	 * @param localPath percorso del file JSON "locale" (immutabile, mai
+	 *                  riscritto da questo processo): {@code party}/
+	 *                  {@code debug}/{@code dataSource}
+	 * @param livePath  percorso del file JSON "live" (pushabile dalla SMU via
+	 *                  {@code ConfigPush}, riscritto atomicamente ad ogni push
+	 *                  accettata): {@code mqttBrokerUrl}/{@code columns}/
+	 *                  {@code bloomFilter}/{@code missingValueHandling}/
+	 *                  {@code hmacKey}/{@code version}
+	 * @return la configurazione validata, fusione dei due file
+	 * @throws DataOwnerConfigException se uno dei due file non e' leggibile, il
+	 *                                   JSON e' malformato, i due file si
+	 *                                   sovrappongono su una stessa chiave, o il
+	 *                                   contenuto fuso non e' valido
 	 */
-	public static DataOwnerConfig load(Path jsonPath) throws DataOwnerConfigException {
-		final String json = readFile(jsonPath);
-		final DataOwnerJsonConfig raw = parseJson(json, jsonPath);
+	public static DataOwnerConfig load(Path localPath, Path livePath) throws DataOwnerConfigException {
+		final JsonObject localObj = parseJsonObject(readFile(localPath), localPath);
+		final JsonObject liveObj = parseJsonObject(readFile(livePath), livePath);
 
-		validateTopLevel(raw, jsonPath);
-		validateDataSource(raw.getDataSource(), jsonPath);
-		validateColumns(raw.getColumns(), jsonPath);
-		validateMissingValueHandling(raw.getMissingValueHandling(), raw.getColumns(), jsonPath);
-		PreprocessingStepFactory.validateCrossColumnConsistency(raw.getColumns(), jsonPath);
+		for (final String key : localObj.keySet()) {
+			if (liveObj.has(key)) {
+				throw new DataOwnerConfigException("Campo '" + key + "' presente sia nel file locale (" + localPath
+						+ ") sia nel file live (" + livePath + "): deve stare in uno solo dei due");
+			}
+		}
+		final JsonObject merged = new JsonObject();
+		for (final Map.Entry<String, JsonElement> entry : localObj.entrySet()) {
+			merged.add(entry.getKey(), entry.getValue());
+		}
+		for (final Map.Entry<String, JsonElement> entry : liveObj.entrySet()) {
+			merged.add(entry.getKey(), entry.getValue());
+		}
+		final DataOwnerJsonConfig raw = new Gson().fromJson(merged, DataOwnerJsonConfig.class);
+		if (raw == null) {
+			throw new DataOwnerConfigException("Configurazione vuota (file locale=" + localPath + ", live=" + livePath
+					+ ")");
+		}
 
-		final int bfLength = resolveBloomFilterLength(raw.getBloomFilter(), jsonPath);
-		final BloomFilterHardener hardener = resolveHardener(raw.getBloomFilter(), bfLength, jsonPath);
+		validateLocalTopLevel(raw, localPath);
+		validateLiveTopLevel(raw, livePath);
+		validateDataSource(raw.getDataSource(), localPath);
+		validateColumns(raw.getColumns(), livePath);
+		validateMissingValueHandling(raw.getMissingValueHandling(), raw.getColumns(), livePath);
+		PreprocessingStepFactory.validateCrossColumnConsistency(raw.getColumns(), livePath);
+
+		final int bfLength = resolveBloomFilterLength(raw.getBloomFilter(), livePath);
+		final BloomFilterHardener hardener = resolveHardener(raw.getBloomFilter(), bfLength, livePath);
 		final List<String> hardeningDescriptions = describeHardeningChain(raw.getBloomFilter());
 
 		final DataSourceJsonConfig dataSource = raw.getDataSource();
-		final String csvFilePath = dataSource.getType() == DataSourceType.CSV ? dataSource.getCsv().getFilePath()
-				: null;
-		final boolean csvHasHeader = dataSource.getType() == DataSourceType.CSV && dataSource.getCsv().isHasHeader();
-		char csvDelimiter = ';';
-		if (dataSource.getType() == DataSourceType.CSV) {
-			final String d = dataSource.getCsv().getDelimiter();
-			if (d.length() != 1) {
-				throw new DataOwnerConfigException(
-						"dataSource.csv.delimiter deve essere un solo carattere, trovato: \"" + d + "\" in " + jsonPath);
-			}
-			csvDelimiter = d.charAt(0);
-		}
-		final DbSourceConfig dbConfig = dataSource.getType() == DataSourceType.DB ? dataSource.getDb() : null;
+		final ResolvedDataSource resolvedDataSource = resolveDataSource(dataSource, localPath);
 
 		final MissingValueHandlingJsonConfig mvh = raw.getMissingValueHandling();
 		final boolean missingValueHandlingEnabled = mvh != null && Boolean.TRUE.equals(mvh.getEnabled());
@@ -87,9 +119,146 @@ public final class DataOwnerConfigLoader {
 
 		final String version = raw.getVersion() != null ? raw.getVersion() : "0";
 
-		return new DataOwnerConfig(raw.getParty(), dataSource.getType(), csvFilePath, csvHasHeader, csvDelimiter, dbConfig,
+		return new DataOwnerConfig(raw.getParty(), dataSource.getType(), resolvedDataSource.csvFilePath,
+				resolvedDataSource.csvHasHeader, resolvedDataSource.csvDelimiter, resolvedDataSource.dbConfig,
 				raw.getMqttBrokerUrl(), raw.getColumns(), bfLength, hardener, raw.isDebug(), missingValueHandlingEnabled,
-				missingValueAnchorPriority, hardeningDescriptions, raw.getHmacKey(), version);
+				missingValueAnchorPriority, hardeningDescriptions, raw.getHmacKey(), version, false);
+	}
+
+	/**
+	 * Legge+valida solo il file "locale" e risolve il percorso del file "live"
+	 * dichiarato al suo interno ({@code liveConfigPath}). Se il file live non
+	 * esiste ancora, lo crea con il solo placeholder {@code {"version":
+	 * "NOT_FOUND"}} e ritorna una configurazione "pending" (connessione MQTT
+	 * possibile via {@code bootstrapMqttBrokerUrl}, ma nessuna pipeline
+	 * eseguibile finche' non arriva una {@code ConfigPush} reale). Se il file
+	 * live esiste ma non e' leggibile per un motivo diverso da "non esiste"
+	 * (permessi, ecc.), l'errore e' fatale. Se il file live esiste e contiene
+	 * gia' una configurazione reale (chiave {@code columns} presente), il
+	 * comportamento e' identico a {@link #load(Path, Path)}.
+	 *
+	 * @param localPath percorso del file JSON locale, unico argomento CLI di
+	 *                  {@code DataOwnerService.main}
+	 * @return la configurazione (pending o meno) e il percorso live risolto
+	 * @throws DataOwnerConfigException se il file locale non e' valido, o il
+	 *                                   file live esiste ma non e' leggibile/valido
+	 */
+	public static BootstrapResult loadBootstrap(Path localPath) throws DataOwnerConfigException {
+		final JsonObject localObj = parseJsonObject(readFile(localPath), localPath);
+		final DataOwnerJsonConfig localRaw = new Gson().fromJson(localObj, DataOwnerJsonConfig.class);
+		if (localRaw == null) {
+			throw new DataOwnerConfigException("File di configurazione locale vuoto: " + localPath);
+		}
+		validateLocalTopLevel(localRaw, localPath);
+		validateDataSource(localRaw.getDataSource(), localPath);
+		requireNonBlank(localRaw.getLiveConfigPath(), "liveConfigPath", localPath);
+		requireNonBlank(localRaw.getBootstrapMqttBrokerUrl(), "bootstrapMqttBrokerUrl", localPath);
+
+		final Path livePath = resolveLivePath(localPath, localRaw.getLiveConfigPath());
+
+		final String liveJson;
+		try {
+			liveJson = Files.readString(livePath, StandardCharsets.UTF_8);
+		}
+		catch (NoSuchFileException e) {
+			writePendingLiveFile(livePath);
+			return new BootstrapResult(buildPendingConfig(localRaw, localPath), livePath);
+		}
+		catch (IOException e) {
+			throw new DataOwnerConfigException("Impossibile leggere il file di configurazione live: " + livePath, e);
+		}
+
+		final JsonObject liveObj = parseJsonObject(liveJson, livePath);
+		if (!liveObj.has("columns")) {
+			// Placeholder (appena scritto o da un avvio precedente) o file live
+			// incompleto trovato cosi' com'e': non ancora una configurazione
+			// reale, nessun errore.
+			return new BootstrapResult(buildPendingConfig(localRaw, localPath), livePath);
+		}
+
+		return new BootstrapResult(load(localPath, livePath), livePath);
+	}
+
+	private static Path resolveLivePath(Path localPath, String liveConfigPathValue) {
+		final Path raw = Paths.get(liveConfigPathValue);
+		if (raw.isAbsolute()) {
+			return raw;
+		}
+		final Path localDir = localPath.toAbsolutePath().getParent();
+		return localDir == null ? raw : localDir.resolve(raw).normalize();
+	}
+
+	private static void writePendingLiveFile(Path livePath) throws DataOwnerConfigException {
+		try {
+			if (livePath.toAbsolutePath().getParent() != null) {
+				Files.createDirectories(livePath.toAbsolutePath().getParent());
+			}
+			Files.writeString(livePath, PENDING_LIVE_FILE_CONTENT, StandardCharsets.UTF_8);
+		}
+		catch (IOException e) {
+			throw new DataOwnerConfigException("Impossibile creare il file di configurazione live mancante: "
+					+ livePath, e);
+		}
+	}
+
+	private static DataOwnerConfig buildPendingConfig(DataOwnerJsonConfig localRaw, Path localPath)
+			throws DataOwnerConfigException {
+		final ResolvedDataSource resolvedDataSource = resolveDataSource(localRaw.getDataSource(), localPath);
+		return new DataOwnerConfig(localRaw.getParty(), localRaw.getDataSource().getType(),
+				resolvedDataSource.csvFilePath, resolvedDataSource.csvHasHeader, resolvedDataSource.csvDelimiter,
+				resolvedDataSource.dbConfig, localRaw.getBootstrapMqttBrokerUrl(), List.of(), DEFAULT_BF_LENGTH,
+				new NoHardener(), localRaw.isDebug(), false, List.of(), List.of(), null, "NOT_FOUND", true);
+	}
+
+	/** Risultato di {@link #loadBootstrap(Path)}: la configurazione (pending o meno) e il percorso live risolto. */
+	public static final class BootstrapResult {
+		public final DataOwnerConfig config;
+		public final Path livePath;
+
+		private BootstrapResult(DataOwnerConfig config, Path livePath) {
+			this.config = config;
+			this.livePath = livePath;
+		}
+	}
+
+	private static final class ResolvedDataSource {
+		final String csvFilePath;
+		final boolean csvHasHeader;
+		final char csvDelimiter;
+		final DbSourceConfig dbConfig;
+
+		ResolvedDataSource(String csvFilePath, boolean csvHasHeader, char csvDelimiter, DbSourceConfig dbConfig) {
+			this.csvFilePath = csvFilePath;
+			this.csvHasHeader = csvHasHeader;
+			this.csvDelimiter = csvDelimiter;
+			this.dbConfig = dbConfig;
+		}
+	}
+
+	/**
+	 * Risolve i campi derivati di {@code dataSource}, condiviso da {@link #load}
+	 * e da {@link #buildPendingConfig} per non duplicare questa logica.
+	 *
+	 * @param errorPath percorso da citare in un eventuale messaggio d'errore
+	 *                  (il delimiter CSV e' validato anche qui, non solo da
+	 *                  {@link #validateDataSource})
+	 */
+	private static ResolvedDataSource resolveDataSource(DataSourceJsonConfig dataSource, Path errorPath)
+			throws DataOwnerConfigException {
+		final String csvFilePath = dataSource.getType() == DataSourceType.CSV ? dataSource.getCsv().getFilePath()
+				: null;
+		final boolean csvHasHeader = dataSource.getType() == DataSourceType.CSV && dataSource.getCsv().isHasHeader();
+		char csvDelimiter = ';';
+		if (dataSource.getType() == DataSourceType.CSV) {
+			final String d = dataSource.getCsv().getDelimiter();
+			if (d.length() != 1) {
+				throw new DataOwnerConfigException(
+						"dataSource.csv.delimiter deve essere un solo carattere, trovato: \"" + d + "\" in " + errorPath);
+			}
+			csvDelimiter = d.charAt(0);
+		}
+		final DbSourceConfig dbConfig = dataSource.getType() == DataSourceType.DB ? dataSource.getDb() : null;
+		return new ResolvedDataSource(csvFilePath, csvHasHeader, csvDelimiter, dbConfig);
 	}
 
 	private static String readFile(Path jsonPath) throws DataOwnerConfigException {
@@ -104,10 +273,10 @@ public final class DataOwnerConfigLoader {
 		}
 	}
 
-	private static DataOwnerJsonConfig parseJson(String json, Path jsonPath) throws DataOwnerConfigException {
-		final DataOwnerJsonConfig raw;
+	private static JsonObject parseJsonObject(String json, Path jsonPath) throws DataOwnerConfigException {
+		final JsonObject raw;
 		try {
-			raw = new Gson().fromJson(json, DataOwnerJsonConfig.class);
+			raw = new Gson().fromJson(json, JsonObject.class);
 		}
 		catch (JsonParseException e) {
 			throw new DataOwnerConfigException("JSON di configurazione malformato in " + jsonPath + ": "
@@ -127,14 +296,21 @@ public final class DataOwnerConfigLoader {
 		}
 	}
 
-	private static void validateTopLevel(DataOwnerJsonConfig raw, Path jsonPath) throws DataOwnerConfigException {
-		requireNonBlank(raw.getParty(), "party", jsonPath);
-		requireNonBlank(raw.getMqttBrokerUrl(), "mqttBrokerUrl", jsonPath);
+	/** Valida i campi di competenza del file locale: {@code party}/{@code dataSource}. */
+	private static void validateLocalTopLevel(DataOwnerJsonConfig raw, Path localPath)
+			throws DataOwnerConfigException {
+		requireNonBlank(raw.getParty(), "party", localPath);
 		if (raw.getDataSource() == null) {
-			throw new DataOwnerConfigException("Campo obbligatorio 'dataSource' mancante in " + jsonPath);
+			throw new DataOwnerConfigException("Campo obbligatorio 'dataSource' mancante in " + localPath);
 		}
+	}
+
+	/** Valida i campi di competenza del file live: {@code mqttBrokerUrl}/{@code columns}. */
+	private static void validateLiveTopLevel(DataOwnerJsonConfig raw, Path livePath)
+			throws DataOwnerConfigException {
+		requireNonBlank(raw.getMqttBrokerUrl(), "mqttBrokerUrl", livePath);
 		if (raw.getColumns() == null || raw.getColumns().isEmpty()) {
-			throw new DataOwnerConfigException("Campo obbligatorio 'columns' mancante o vuoto in " + jsonPath);
+			throw new DataOwnerConfigException("Campo obbligatorio 'columns' mancante o vuoto in " + livePath);
 		}
 	}
 

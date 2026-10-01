@@ -13,8 +13,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hardening.ChainedHardener;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.encoding.bloomfilter.hardening.NoHardener;
@@ -119,34 +124,70 @@ class DataOwnerConfigLoaderTest {
 
 	@Test
 	void smuDigestMatchesPythonReferenceForMergeTransform() throws Exception {
-		final Path path = writeJson("merge-transform.json", MERGE_TRANSFORM_TEST_JSON);
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+		final ConfigPaths paths = writeJson("merge-transform.json", MERGE_TRANSFORM_TEST_JSON);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
 		assertEquals("nBkvX8iZZkAYtUcOTSS7I1Zc87VaGoHhLYetPdUAjWATKmnYr5E0gssJ/Z/2L9La", config.computeConfigHash());
 	}
 
 	@Test
 	void smuDigestMatchesPythonReferenceForFebrl41MixedTestSchema() throws Exception {
-		final Path path = writeJson("smu-febrl4_1_mixed.json", SMU_FEBRL4_1_MIXED_TEST_JSON);
+		final ConfigPaths paths = writeJson("smu-febrl4_1_mixed.json", SMU_FEBRL4_1_MIXED_TEST_JSON);
 
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
 
 		assertEquals("vOPtAqrLKl+0fe2Xwnmcmnr2ITi7DGbeHSJNUAlK/2+aQMRIncY13F2eMsyQQBs/", config.computeConfigHash());
 	}
 
-	private Path writeJson(String fileName, String content) throws IOException {
+	/** Percorsi dei due file (locale/live) prodotti da {@link #writeJson(String, String)}. */
+	private static final class ConfigPaths {
+		final Path local;
+		final Path live;
+
+		ConfigPaths(Path local, Path live) {
+			this.local = local;
+			this.live = live;
+		}
+	}
+
+	/**
+	 * Scrive un JSON "a file singolo" come usato ovunque in questa classe (stile
+	 * pre-split, piu' comodo per costruire casi di test) dividendolo
+	 * automaticamente in coppia locale/live secondo la stessa partizione usata
+	 * in produzione ({@code party}/{@code debug}/{@code dataSource} -&gt;
+	 * locale, tutto il resto -&gt; live) e scrivendo i due file risultanti.
+	 */
+	private ConfigPaths writeJson(String fileName, String content) throws IOException {
 		final Path tempDir = Files.createTempDirectory("dataowner-config-test");
 		tempDir.toFile().deleteOnExit();
-		final Path path = tempDir.resolve(fileName);
-		Files.writeString(path, content, StandardCharsets.UTF_8);
-		path.toFile().deleteOnExit();
-		return path;
+
+		final JsonObject full = JsonParser.parseString(content).getAsJsonObject();
+		final JsonObject local = new JsonObject();
+		for (final String key : new String[] { "party", "debug", "dataSource" }) {
+			if (full.has(key)) {
+				local.add(key, full.get(key));
+			}
+		}
+		final JsonObject live = new JsonObject();
+		for (final Map.Entry<String, JsonElement> entry : full.entrySet()) {
+			if (!local.has(entry.getKey())) {
+				live.add(entry.getKey(), entry.getValue());
+			}
+		}
+
+		final Path localPath = tempDir.resolve(fileName + "_local.json");
+		final Path livePath = tempDir.resolve(fileName + "_live.json");
+		Files.writeString(localPath, local.toString(), StandardCharsets.UTF_8);
+		Files.writeString(livePath, live.toString(), StandardCharsets.UTF_8);
+		localPath.toFile().deleteOnExit();
+		livePath.toFile().deleteOnExit();
+		return new ConfigPaths(localPath, livePath);
 	}
 
 	@Test
 	void loadsValidConfig() throws Exception {
-		final Path path = writeJson("valid.json", VALID_JSON);
+		final ConfigPaths paths = writeJson("valid.json", VALID_JSON);
 
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
 
 		assertEquals("A", config.getParty());
 		assertEquals("tcp://localhost:1883", config.getMqttBrokerUrl());
@@ -163,9 +204,9 @@ class DataOwnerConfigLoaderTest {
 	void loadsValidConfigWithXorFoldHardening() throws Exception {
 		final String json = VALID_JSON.replace("{ \"type\": \"NONE\" }",
 				"{ \"type\": \"XOR_FOLD\", \"foldCount\": 2 }");
-		final Path path = writeJson("valid-xorfold.json", json);
+		final ConfigPaths paths = writeJson("valid-xorfold.json", json);
 
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
 
 		assertTrue(config.getHardener() instanceof XorFolder);
 		// bloomFilter.length=1024 dimezzato 2 volte dal foldCount: la dimensione
@@ -178,9 +219,9 @@ class DataOwnerConfigLoaderTest {
 	void loadsValidConfigWithBlipHardening() throws Exception {
 		final String json = VALID_JSON.replace("{ \"type\": \"NONE\" }",
 				"{ \"type\": \"BLIP\", \"probability\": 0.2, \"seed\": 42 }");
-		final Path path = writeJson("valid-blip.json", json);
+		final ConfigPaths paths = writeJson("valid-blip.json", json);
 
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
 
 		assertTrue(config.getHardener() instanceof RandomizedResponse);
 	}
@@ -189,9 +230,9 @@ class DataOwnerConfigLoaderTest {
 	void loadsValidConfigWithBlipHardeningDefaultSeed() throws Exception {
 		final String json = VALID_JSON.replace("{ \"type\": \"NONE\" }",
 				"{ \"type\": \"BLIP\", \"probability\": 0.2 }");
-		final Path path = writeJson("valid-blip-default-seed.json", json);
+		final ConfigPaths paths = writeJson("valid-blip-default-seed.json", json);
 
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
 
 		assertTrue(config.getHardener() instanceof RandomizedResponse);
 	}
@@ -199,10 +240,10 @@ class DataOwnerConfigLoaderTest {
 	@Test
 	void blipWithoutProbabilityThrowsConfigException() throws Exception {
 		final String json = VALID_JSON.replace("{ \"type\": \"NONE\" }", "{ \"type\": \"BLIP\" }");
-		final Path path = writeJson("blip-no-probability.json", json);
+		final ConfigPaths paths = writeJson("blip-no-probability.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("probability"));
 	}
 
@@ -210,9 +251,9 @@ class DataOwnerConfigLoaderTest {
 	void blipWithOutOfRangeProbabilityThrowsConfigException() throws Exception {
 		final String json = VALID_JSON.replace("{ \"type\": \"NONE\" }",
 				"{ \"type\": \"BLIP\", \"probability\": 1.5 }");
-		final Path path = writeJson("blip-bad-probability.json", json);
+		final ConfigPaths paths = writeJson("blip-bad-probability.json", json);
 
-		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(paths.local, paths.live));
 	}
 
 	@Test
@@ -221,9 +262,9 @@ class DataOwnerConfigLoaderTest {
 				"\"hardeningChain\": ["
 						+ "{ \"type\": \"BLIP\", \"probability\": 0.2, \"seed\": 42 },"
 						+ "{ \"type\": \"XOR_FOLD\", \"foldCount\": 2 }" + "]");
-		final Path path = writeJson("valid-chain.json", json);
+		final ConfigPaths paths = writeJson("valid-chain.json", json);
 
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
 
 		assertTrue(config.getHardener() instanceof ChainedHardener);
 	}
@@ -234,10 +275,10 @@ class DataOwnerConfigLoaderTest {
 				"\"hardeningChain\": ["
 						+ "{ \"type\": \"XOR_FOLD\", \"foldCount\": 2 },"
 						+ "{ \"type\": \"BLIP\", \"probability\": 0.2, \"seed\": 42 }" + "]");
-		final Path path = writeJson("chain-xorfold-not-last.json", json);
+		final ConfigPaths paths = writeJson("chain-xorfold-not-last.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("ultimo step"));
 	}
 
@@ -247,9 +288,9 @@ class DataOwnerConfigLoaderTest {
 				"\"hardeningChain\": ["
 						+ "{ \"type\": \"XOR_FOLD\", \"foldCount\": 1 },"
 						+ "{ \"type\": \"XOR_FOLD\", \"foldCount\": 1 }" + "]");
-		final Path path = writeJson("chain-duplicate-xorfold.json", json);
+		final ConfigPaths paths = writeJson("chain-duplicate-xorfold.json", json);
 
-		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(paths.local, paths.live));
 	}
 
 	@Test
@@ -257,10 +298,10 @@ class DataOwnerConfigLoaderTest {
 		final String json = VALID_JSON.replace("\"hardening\": { \"type\": \"NONE\" }",
 				"\"hardening\": { \"type\": \"NONE\" }, \"hardeningChain\": ["
 						+ "{ \"type\": \"BLIP\", \"probability\": 0.2 }" + "]");
-		final Path path = writeJson("chain-and-single.json", json);
+		final ConfigPaths paths = writeJson("chain-and-single.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("mutuamente esclusivi"));
 	}
 
@@ -269,9 +310,9 @@ class DataOwnerConfigLoaderTest {
 		final String json = VALID_JSON.replace("\"hardening\": { \"type\": \"NONE\" }",
 				"\"hardeningChain\": [" + "{ \"type\": \"NONE\" },"
 						+ "{ \"type\": \"XOR_FOLD\", \"foldCount\": 2 }" + "]");
-		final Path path = writeJson("chain-none-step.json", json);
+		final ConfigPaths paths = writeJson("chain-none-step.json", json);
 
-		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(paths.local, paths.live));
 	}
 
 	@Test
@@ -279,24 +320,31 @@ class DataOwnerConfigLoaderTest {
 		final Path missing = Files.createTempDirectory("dataowner-config-test").resolve("does-not-exist.json");
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(missing));
+				() -> DataOwnerConfigLoader.load(missing, missing));
 		assertTrue(e.getMessage().contains("non trovato"));
 	}
 
 	@Test
 	void malformedJsonThrowsConfigException() throws Exception {
-		final Path path = writeJson("malformed.json", "{ \"party\": \"A\", ");
+		final Path tempDir = Files.createTempDirectory("dataowner-config-test");
+		tempDir.toFile().deleteOnExit();
+		final Path malformedLocal = tempDir.resolve("malformed_local.json");
+		Files.writeString(malformedLocal, "{ \"party\": \"A\", ", StandardCharsets.UTF_8);
+		malformedLocal.toFile().deleteOnExit();
+		final Path emptyLive = tempDir.resolve("malformed_live.json");
+		Files.writeString(emptyLive, "{}", StandardCharsets.UTF_8);
+		emptyLive.toFile().deleteOnExit();
 
-		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(malformedLocal, emptyLive));
 	}
 
 	@Test
 	void missingRequiredFieldThrowsConfigException() throws Exception {
 		final String json = VALID_JSON.replace("\"party\": \"A\",", "");
-		final Path path = writeJson("no-party.json", json);
+		final ConfigPaths paths = writeJson("no-party.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("party"));
 	}
 
@@ -305,18 +353,18 @@ class DataOwnerConfigLoaderTest {
 		final String json = VALID_JSON.replace(
 				"{ \"index\": 6, \"name\": \"YOB\", \"role\": \"QID\", \"preprocessing\": " + PREP_NUMERIC + ", \"hashFunctions\": 13, \"salt\": \"YOB_\" }",
 				"{ \"index\": 3, \"name\": \"YOB\", \"role\": \"QID\", \"preprocessing\": " + PREP_NUMERIC + ", \"hashFunctions\": 13, \"salt\": \"YOB_\" }");
-		final Path path = writeJson("dup-index.json", json);
+		final ConfigPaths paths = writeJson("dup-index.json", json);
 
-		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(paths.local, paths.live));
 	}
 
 	@Test
 	void missingPartyRoleThrowsConfigException() throws Exception {
 		final String json = VALID_JSON.replace(
 				"{ \"index\": 0, \"name\": \"PARTY\", \"role\": \"PARTY\" },", "");
-		final Path path = writeJson("no-party-role.json", json);
+		final ConfigPaths paths = writeJson("no-party-role.json", json);
 
-		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(paths.local, paths.live));
 	}
 
 	@Test
@@ -324,9 +372,9 @@ class DataOwnerConfigLoaderTest {
 		final String json = VALID_JSON.replace(
 				"{ \"index\": 0, \"name\": \"PARTY\", \"role\": \"PARTY\" },",
 				"{ \"name\": \"PARTY\", \"role\": \"PARTY\" },");
-		final Path path = writeJson("party-no-index.json", json);
+		final ConfigPaths paths = writeJson("party-no-index.json", json);
 
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
 
 		final ColumnConfig partyColumn = config.getColumns().stream()
 				.filter(c -> c.getRole() == ColumnRole.PARTY).findFirst().orElseThrow();
@@ -339,9 +387,9 @@ class DataOwnerConfigLoaderTest {
 		final String json = VALID_JSON.replace(
 				"{ \"index\": 1, \"name\": \"GLOBAL_ID\", \"role\": \"GLOBAL_ID\" },",
 				"{ \"name\": \"GLOBAL_ID\", \"role\": \"GLOBAL_ID\" },");
-		final Path path = writeJson("global-id-no-index.json", json);
+		final ConfigPaths paths = writeJson("global-id-no-index.json", json);
 
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
 
 		final ColumnConfig globalIdColumn = config.getColumns().stream()
 				.filter(c -> c.getRole() == ColumnRole.GLOBAL_ID).findFirst().orElseThrow();
@@ -354,9 +402,9 @@ class DataOwnerConfigLoaderTest {
 		final String json = VALID_JSON.replace(
 				"{ \"index\": 2, \"name\": \"ID\", \"role\": \"ID\" },",
 				"{ \"name\": \"ID\", \"role\": \"ID\" },");
-		final Path path = writeJson("id-no-index.json", json);
+		final ConfigPaths paths = writeJson("id-no-index.json", json);
 
-		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(paths.local, paths.live));
 	}
 
 	@Test
@@ -364,9 +412,9 @@ class DataOwnerConfigLoaderTest {
 		final String json = VALID_JSON.replace(
 				"{ \"index\": 3, \"name\": \"FN\", \"role\": \"QID\", \"preprocessing\": " + PREP_TEXT + ", \"hashFunctions\": 12, \"salt\": \"FN_\" },",
 				"{ \"index\": 3, \"name\": \"FN\", \"role\": \"QID\", \"preprocessing\": " + PREP_TEXT + ", \"hashFunctions\": 12, \"salt\": \"FN_\", \"constantValue\": \"x\" },");
-		final Path path = writeJson("constant-value-on-qid.json", json);
+		final ConfigPaths paths = writeJson("constant-value-on-qid.json", json);
 
-		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(paths.local, paths.live));
 	}
 
 	@Test
@@ -374,10 +422,10 @@ class DataOwnerConfigLoaderTest {
 		final String json = VALID_JSON.replace(
 				"{ \"index\": 3, \"name\": \"FN\", \"role\": \"QID\", \"preprocessing\": " + PREP_TEXT + ", \"hashFunctions\": 12, \"salt\": \"FN_\" },",
 				"{ \"index\": 3, \"name\": \"FN\", \"role\": \"QID\", \"hashFunctions\": 12, \"salt\": \"FN_\" },");
-		final Path path = writeJson("no-preprocessing.json", json);
+		final ConfigPaths paths = writeJson("no-preprocessing.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("preprocessing"));
 	}
 
@@ -386,27 +434,27 @@ class DataOwnerConfigLoaderTest {
 		final String json = VALID_JSON.replace(
 				"\"preprocessing\": " + PREP_TEXT + ", \"hashFunctions\": 12, \"salt\": \"FN_\"",
 				"\"preprocessing\": [ {\"type\":\"NOT_A_STEP\"} ], \"hashFunctions\": 12, \"salt\": \"FN_\"");
-		final Path path = writeJson("bad-preprocessing.json", json);
+		final ConfigPaths paths = writeJson("bad-preprocessing.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("preprocessing"));
 	}
 
 	@Test
 	void nonPositiveHashFunctionsThrowsConfigException() throws Exception {
 		final String json = VALID_JSON.replace("\"hashFunctions\": 12,", "\"hashFunctions\": 0,");
-		final Path path = writeJson("bad-hashfunctions.json", json);
+		final ConfigPaths paths = writeJson("bad-hashfunctions.json", json);
 
-		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(paths.local, paths.live));
 	}
 
 	@Test
 	void nonPositiveBloomFilterLengthThrowsConfigException() throws Exception {
 		final String json = VALID_JSON.replace("\"length\": 1024,", "\"length\": 0,");
-		final Path path = writeJson("bad-length.json", json);
+		final ConfigPaths paths = writeJson("bad-length.json", json);
 
-		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(paths.local, paths.live));
 	}
 
 	@Test
@@ -414,9 +462,9 @@ class DataOwnerConfigLoaderTest {
 		final String json = VALID_JSON
 				.replace("\"length\": 1024,", "\"length\": 100,")
 				.replace("{ \"type\": \"NONE\" }", "{ \"type\": \"XOR_FOLD\", \"foldCount\": 3 }");
-		final Path path = writeJson("bad-foldcount.json", json);
+		final ConfigPaths paths = writeJson("bad-foldcount.json", json);
 
-		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(paths.local, paths.live));
 	}
 
 	@Test
@@ -430,10 +478,10 @@ class DataOwnerConfigLoaderTest {
 						+ "  \"type\": \"DB\","
 						+ "  \"db\": { \"jdbcUrl\": \"jdbc:postgresql://localhost:5432/primat\" }"
 						+ "},");
-		final Path path = writeJson("db-no-table.json", json);
+		final ConfigPaths paths = writeJson("db-no-table.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("tableName"));
 	}
 
@@ -448,10 +496,10 @@ class DataOwnerConfigLoaderTest {
 				+ "  { \"index\": 2, \"name\": \"given_name\", \"role\": \"RAW\" },"
 				+ "  { \"index\": 3, \"name\": \"surname\", \"role\": \"QID\", \"preprocessing\": " + PREP_TEXT + " }"
 				+ "]}";
-		final Path path = writeJson("raw-not-referenced.json", json);
+		final ConfigPaths paths = writeJson("raw-not-referenced.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("RAW"));
 	}
 
@@ -469,10 +517,10 @@ class DataOwnerConfigLoaderTest {
 				+ "  { \"name\": \"a\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"MERGE\",\"sources\":[\"given_name\",\"surname\"],\"merger\":{\"type\":\"BLANK\"}} ] },"
 				+ "  { \"name\": \"b\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"MERGE\",\"sources\":[\"given_name\",\"middle_name\"],\"merger\":{\"type\":\"BLANK\"}} ] }"
 				+ "]}";
-		final Path path = writeJson("raw-referenced-twice.json", json);
+		final ConfigPaths paths = writeJson("raw-referenced-twice.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("piu' di uno step"));
 	}
 
@@ -486,10 +534,10 @@ class DataOwnerConfigLoaderTest {
 				+ "  { \"index\": 1, \"name\": \"ID\", \"role\": \"ID\" },"
 				+ "  { \"name\": \"full_name\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"TRIM\"} ] }"
 				+ "]}";
-		final Path path = writeJson("virtual-qid-no-transform-step.json", json);
+		final ConfigPaths paths = writeJson("virtual-qid-no-transform-step.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("MERGE o SPLIT"));
 	}
 
@@ -505,10 +553,10 @@ class DataOwnerConfigLoaderTest {
 				+ "  { \"index\": 3, \"name\": \"surname\", \"role\": \"RAW\" },"
 				+ "  { \"index\": 4, \"name\": \"full_name\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"MERGE\",\"sources\":[\"given_name\",\"surname\"],\"merger\":{\"type\":\"BLANK\"}} ] }"
 				+ "]}";
-		final Path path = writeJson("physical-qid-with-merge.json", json);
+		final ConfigPaths paths = writeJson("physical-qid-with-merge.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("colonna fisica"));
 	}
 
@@ -524,10 +572,10 @@ class DataOwnerConfigLoaderTest {
 				+ "  { \"index\": 3, \"name\": \"surname\", \"role\": \"RAW\" },"
 				+ "  { \"name\": \"full_name\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"MERGE\",\"sources\":[\"given_name\",\"surname\"],\"merger\":{\"type\":\"SIMPLE\"}} ] }"
 				+ "]}";
-		final Path path = writeJson("simple-merger-no-separator.json", json);
+		final ConfigPaths paths = writeJson("simple-merger-no-separator.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("separator"));
 	}
 
@@ -544,9 +592,9 @@ class DataOwnerConfigLoaderTest {
 				+ "  { \"name\": \"dob_month\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"SPLIT\",\"source\":\"date_of_birth\",\"splitter\":{\"type\":\"BLANK\"},\"parts\":3,\"part\":1}, {\"type\":\"TRIM\"} ] },"
 				+ "  { \"name\": \"dob_year\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"SPLIT\",\"source\":\"date_of_birth\",\"splitter\":{\"type\":\"BLANK\"},\"parts\":3,\"part\":2}, {\"type\":\"TRIM\"} ] }"
 				+ "]}";
-		final Path path = writeJson("valid-split.json", json);
+		final ConfigPaths paths = writeJson("valid-split.json", json);
 
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
 
 		assertEquals(6, config.getColumns().size());
 	}
@@ -563,10 +611,10 @@ class DataOwnerConfigLoaderTest {
 				+ "  { \"name\": \"dob_day\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"SPLIT\",\"source\":\"date_of_birth\",\"splitter\":{\"type\":\"BLANK\"},\"parts\":3,\"part\":0} ] },"
 				+ "  { \"name\": \"dob_month\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"SPLIT\",\"source\":\"date_of_birth\",\"splitter\":{\"type\":\"BLANK\"},\"parts\":3,\"part\":1} ] }"
 				+ "]}";
-		final Path path = writeJson("split-incomplete.json", json);
+		final ConfigPaths paths = writeJson("split-incomplete.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("non copre tutte le"));
 	}
 
@@ -582,10 +630,10 @@ class DataOwnerConfigLoaderTest {
 				+ "  { \"name\": \"dob_day\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"SPLIT\",\"source\":\"date_of_birth\",\"splitter\":{\"type\":\"BLANK\"},\"parts\":2,\"part\":0} ] },"
 				+ "  { \"name\": \"dob_month\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"SPLIT\",\"source\":\"date_of_birth\",\"splitter\":{\"type\":\"BLANK\"},\"parts\":2,\"part\":0} ] }"
 				+ "]}";
-		final Path path = writeJson("split-duplicate-part.json", json);
+		final ConfigPaths paths = writeJson("split-duplicate-part.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("dichiarata da piu' di una colonna"));
 	}
 
@@ -601,10 +649,10 @@ class DataOwnerConfigLoaderTest {
 				+ "  { \"name\": \"dob_day\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"SPLIT\",\"source\":\"date_of_birth\",\"splitter\":{\"type\":\"BLANK\"},\"parts\":2,\"part\":0} ] },"
 				+ "  { \"name\": \"dob_month\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"SPLIT\",\"source\":\"date_of_birth\",\"splitter\":{\"type\":\"COMMA\"},\"parts\":2,\"part\":1} ] }"
 				+ "]}";
-		final Path path = writeJson("split-inconsistent-splitter.json", json);
+		final ConfigPaths paths = writeJson("split-inconsistent-splitter.json", json);
 
 		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
-				() -> DataOwnerConfigLoader.load(path));
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
 		assertTrue(e.getMessage().contains("incoerenti"));
 	}
 }

@@ -13,8 +13,19 @@ su "primat/do/{party}/config" (vedi MqttTopics.java lato Java) - non ci sono
 due fasi separate: schema ed encoding viaggiano insieme.
 
 La SMU decide e spinge unilateralmente: l'ack di ciascun DO
-("primat/smu/{party}/ack") e' solo conferma tecnica che il file locale e'
-stato riscritto/ricaricato con successo, mai un consenso.
+("primat/smu/{party}/ack") e' solo conferma tecnica che il file "live" e'
+stato riscritto/ricaricato con successo, mai un consenso. Il Data Owner separa
+la propria configurazione in due file: "locale" (party/debug/dataSource, mai
+spedita dalla SMU) e "live" (tutto il resto, incluso mqttBrokerUrl - pushabile
+e hot-riconfigurabile dal 2026-10-01).
+
+L'indirizzo del broker MQTT (usato sia dalla SMU per le proprie connessioni
+sia come valore pushato ai DO) vive in config/broker.json, letto fresco ad
+ogni operazione - mai una costante hardcoded. Una vera migrazione verso un
+nuovo broker (non solo un fix del file) va fatta con la funzionalita' dedicata
+"Migra broker MQTT": l'annuncio deve viaggiare sul broker attuale (dove i DO
+sono ancora connessi), non su quello nuovo, quindi non basta sovrascrivere
+config/broker.json prima di pubblicare.
 
 La funzionalita' "Avvia esecuzione" (run_start_command) e' la regia
 dell'intero protocollo di run: verifica che tutti i DO abbiano gia' applicato
@@ -41,9 +52,8 @@ import paho.mqtt.client as mqtt
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
 STATE_PATH = os.path.join(CONFIG_DIR, "state.json")
 ENCODING_PATH = os.path.join(CONFIG_DIR, "encoding.json")
+BROKER_PATH = os.path.join(CONFIG_DIR, "broker.json")
 
-MQTT_HOST = "localhost"
-MQTT_PORT = 1883
 ACK_TIMEOUT_SECONDS = 15
 VERSION_CHECK_TIMEOUT_SECONDS = 15
 LU_CONFIG_ACK_TIMEOUT_SECONDS = 15
@@ -127,6 +137,26 @@ def discovered_parties():
     return parties
 
 
+def _current_broker_url():
+    """Letto fresco ad ogni chiamata (stessa filosofia no-cache di
+    do_<party>.json/encoding.json/state.json): nessun valore della SMU resta
+    mai una costante hardcoded in memoria."""
+    return _load_json(BROKER_PATH)["mqttBrokerUrl"]
+
+
+def _parse_broker_url(url):
+    """'tcp://host:port' -> (host, port): paho vuole i due valori separati,
+    a differenza del formato a stringa unica gia' usato lato Java."""
+    if "://" in url:
+        url = url.split("://", 1)[1]
+    host, _, port = url.rpartition(":")
+    return host, int(port)
+
+
+def _current_broker_host_port():
+    return _parse_broker_url(_current_broker_url())
+
+
 def next_version():
     """Incrementa e persiste la versione, sempre, anche se poi la push fallisce
     (cosi' un retry usa sempre una versione fresca, mai ambigua)."""
@@ -149,7 +179,7 @@ def last_applied_version():
     return _load_json(STATE_PATH).get("lastAppliedVersion")
 
 
-def build_config_push(party):
+def build_config_push(party, broker_url_override=None):
     """Fonde do_<party>.json (mapping + preprocessing, per-DO) + encoding.json
     (comune) in un 'columns' unico gia' risolto: per ogni colonna QID la
     catena 'preprocessing' viene dallo schema del DO (allinea il suo schema
@@ -158,6 +188,14 @@ def build_config_push(party):
     presi da encoding.json['columns'][nome]; le colonne non-QID (PARTY/ID/
     GLOBAL_ID) restano quelle dichiarate dal DO. Ritorna (config_fragment,
     resolved_qid_columns) - il secondo serve solo per il calcolo del digest.
+
+    'mqttBrokerUrl' nel frammento risultante e' sempre il valore corrente di
+    config/broker.json, a meno che 'broker_url_override' non sia dato (usato
+    solo da migrate_broker(): durante una migrazione il valore pushato deve
+    essere il NUOVO broker, mentre config/broker.json contiene ancora il
+    vecchio finche' tutti i DO non hanno confermato). Mai incluso nel digest
+    (compute_config_hash prende solo bloomFilter/missingValueHandling/
+    qid_columns, mai l'intero frammento).
     """
     schema = _load_json(_do_schema_path(party))
     encoding = _load_json(ENCODING_PATH)
@@ -191,6 +229,8 @@ def build_config_push(party):
     }
     if encoding.get("hmacKey"):
         config_fragment["hmacKey"] = encoding["hmacKey"]
+    config_fragment["mqttBrokerUrl"] = broker_url_override if broker_url_override is not None \
+        else _current_broker_url()
     return config_fragment, resolved_qid_columns
 
 
@@ -374,7 +414,8 @@ def _publish_and_await_acks(client_id, publish_steps, subscribe_topics, correlat
     client = _new_client(client_id)
     client.on_connect = on_connect
     client.on_message = on_message
-    client.connect(MQTT_HOST, MQTT_PORT)
+    host, port = _current_broker_host_port()
+    client.connect(host, port)
     client.loop_start()
     try:
         time.sleep(0.5)  # lascia atterrare la subscribe prima di pubblicare
@@ -445,7 +486,8 @@ def run_configure_dos():
     client = _new_client("primat-smu-configure")
     client.on_connect = on_connect
     client.on_message = on_message
-    client.connect(MQTT_HOST, MQTT_PORT)
+    host, port = _current_broker_host_port()
+    client.connect(host, port)
     client.loop_start()
     try:
         time.sleep(0.5)  # lascia atterrare la subscribe prima di pubblicare
@@ -495,6 +537,90 @@ def force_bump_version():
     with open(STATE_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
     print("Versione locale aggiornata a v" + version + " (solo SMU, nessun invio ai DO).")
+
+
+def migrate_broker():
+    """Migra l'intero fleet (SMU + tutti i DO) verso un nuovo indirizzo MQTT.
+
+    A differenza di una normale 'Configura i DO' (che userebbe sempre il
+    broker corrente sia per connettersi sia per il valore pushato - inutile
+    qui: l'annuncio "spostati sul nuovo broker" deve viaggiare sul broker
+    ATTUALE, dove i DO sono ancora connessi, non su quello nuovo), questa
+    funzione si connette sul vecchio broker, pusha a tutte le party il nuovo
+    valore (override esplicito - config/broker.json resta invariato finche'
+    non arriva conferma), attende tutti gli ack, e SOLO al 100% di successo
+    aggiorna config/broker.json - cosi' ogni operazione successiva (inclusa
+    la prossima 'Configura i DO') punta gia' al broker giusto, lo stesso su
+    cui i DO si sono nel frattempo spostati (vedi DataOwnerService.handleConfigPush,
+    verifica-poi-switch).
+
+    Limite noto e accettato: se solo una parte dei DO conferma, quelli gia'
+    spostati restano raggiungibili solo sul nuovo broker mentre la SMU e gli
+    altri DO restano sul vecchio - nessuna semantica distribuita completa,
+    richiede intervento manuale per riallineare i DO rimasti indietro.
+    """
+    parties = discovered_parties()
+    if not parties:
+        print("Nessuno schema DO trovato in config/do_*.json")
+        return
+
+    old_url = _current_broker_url()
+    new_url = input("Nuovo mqttBrokerUrl (attuale: " + old_url + "): ").strip()
+    if not new_url:
+        print("Annullato: nessun URL inserito.")
+        return
+    try:
+        _parse_broker_url(new_url)
+    except ValueError:
+        print("ERRORE: URL non valido, atteso il formato 'tcp://host:porta'.")
+        return
+
+    version = next_version()
+    print("Migrazione broker v" + version + " (" + old_url + " -> " + new_url + "), party coinvolte: "
+          + ", ".join(parties))
+
+    publish_steps = []
+    for party in parties:
+        try:
+            config_fragment, _ = build_config_push(party, broker_url_override=new_url)
+        except (OSError, KeyError, ValueError) as e:
+            print("ERRORE nella preparazione della configurazione per " + party + ": " + str(e))
+            return
+        payload = {"version": version, "configJson": json.dumps(config_fragment)}
+        publish_steps.append((config_topic(party), payload))
+
+    def correlate(topic, payload):
+        party = payload.get("party")
+        return party if party in parties and payload.get("version") == version else None
+
+    completed, acks = _publish_and_await_acks(
+        "primat-smu-migrate-broker", publish_steps, [config_ack_topic_wildcard()],
+        correlate, set(parties), ACK_TIMEOUT_SECONDS)
+
+    if not completed:
+        missing = [p for p in parties if p not in acks]
+        print("ERRORE: timeout in attesa degli ack di: " + ", ".join(missing)
+              + " - config/broker.json NON aggiornato, resta " + old_url)
+        return
+
+    errors = {p: payload for p, (_, payload) in acks.items() if payload.get("status") != "OK"}
+    if errors:
+        print("ERRORE: migrazione rifiutata da almeno un DO - config/broker.json NON aggiornato, resta "
+              + old_url + ":")
+        for party, payload in errors.items():
+            print("  [" + party + "] " + str(payload.get("detail")))
+        return
+
+    broker_state = _load_json(BROKER_PATH)
+    broker_state["mqttBrokerUrl"] = new_url
+    with open(BROKER_PATH, "w", encoding="utf-8") as f:
+        json.dump(broker_state, f, indent=2)
+    state = _load_json(STATE_PATH) if os.path.exists(STATE_PATH) else {"version": 0}
+    state["lastAppliedVersion"] = version
+    with open(STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+    print("Migrazione completata su tutti i DO (" + ", ".join(parties) + "): config/broker.json aggiornato a "
+          + new_url)
 
 
 # --------------------------------------------------------------------------
@@ -601,7 +727,8 @@ def _phase_start_dos(run_id, parties):
     print("Avvio StartCommand per: " + ", ".join(parties))
     client = _new_client("primat-smu-start")
     try:
-        client.connect(MQTT_HOST, MQTT_PORT)
+        host, port = _current_broker_host_port()
+        client.connect(host, port)
         client.loop_start()
         time.sleep(0.5)
         for party in parties:
@@ -694,6 +821,7 @@ def main():
         print("1) Configura i DO")
         print("2) Avvia esecuzione (StartCommand)")
         print("3) Aggiorna versione (solo test/dev, salta l'invio ai DO)")
+        print("4) Migra broker MQTT (DO + SMU)")
         print("0) Esci")
         choice = input("> ").strip()
         if choice == "1":
@@ -702,6 +830,8 @@ def main():
             run_start_command()
         elif choice == "3":
             force_bump_version()
+        elif choice == "4":
+            migrate_broker()
         elif choice == "0":
             break
         else:

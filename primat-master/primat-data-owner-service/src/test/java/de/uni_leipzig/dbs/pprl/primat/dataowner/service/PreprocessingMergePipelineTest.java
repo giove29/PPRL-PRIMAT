@@ -10,8 +10,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.DataOwnerConfigLoader;
@@ -83,11 +88,27 @@ class PreprocessingMergePipelineTest {
 	}
 
 	private Record runPipeline(Path dir, String fileName, String json) throws Exception {
-		final Path jsonPath = dir.resolve(fileName);
-		Files.writeString(jsonPath, json, StandardCharsets.UTF_8);
-		jsonPath.toFile().deleteOnExit();
+		final JsonObject full = JsonParser.parseString(json).getAsJsonObject();
+		final JsonObject local = new JsonObject();
+		for (final String key : new String[] { "party", "debug", "dataSource" }) {
+			if (full.has(key)) {
+				local.add(key, full.get(key));
+			}
+		}
+		final JsonObject live = new JsonObject();
+		for (final Map.Entry<String, JsonElement> entry : full.entrySet()) {
+			if (!local.has(entry.getKey())) {
+				live.add(entry.getKey(), entry.getValue());
+			}
+		}
+		final Path localPath = dir.resolve(fileName + "_local.json");
+		final Path livePath = dir.resolve(fileName + "_live.json");
+		Files.writeString(localPath, local.toString(), StandardCharsets.UTF_8);
+		Files.writeString(livePath, live.toString(), StandardCharsets.UTF_8);
+		localPath.toFile().deleteOnExit();
+		livePath.toFile().deleteOnExit();
 
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(jsonPath);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(localPath, livePath);
 		final List<Record> records = new DataOwnerPipeline(
 				new CsvRecordSource(config.getCsvFilePath(), config.isCsvHasHeader(), config.getCsvDelimiter()),
 				config).run();

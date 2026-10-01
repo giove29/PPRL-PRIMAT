@@ -1,0 +1,14 @@
+{
+  "party": "org",
+  "debug": true,
+  "dataSource": {
+    "type": "CSV",
+    "csv": {
+      "delimiter": ";",
+      "filePath": "primat-examples/src/main/resources/febrl2_dirty/febrl2_dirty.csv",
+      "hasHeader": true
+    }
+  },
+  "liveConfigPath": "party_org_dirty_live.json",
+  "bootstrapMqttBrokerUrl": "tcp://localhost:1883"
+}

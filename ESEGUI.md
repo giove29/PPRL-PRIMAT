@@ -85,7 +85,7 @@ Test `LinkageUnitConfigLoaderTest` (mirror di `DataOwnerConfigLoaderTest`: JSON 
   - `MSCD_AP_NO_CLEAN` → **non** popola `cleanSources` + `runMscdAp`, DB dedicato (diverso da quello di `MSCD_AP`).
   - `MCL` → `runMcl`, poi se `config.isMclDebugExportEnabled()` scrive il CSV al path da config.
 - `buildPersistentInput` guadagna un parametro `DbConnection` esplicito.
-- `main(String[])`: un solo argomento, path al JSON (mirror di `DataOwnerService.main`) — carica la config, cattura `LinkageUnitConfigException` con messaggio pulito + `exit(1)`, costruisce l'orchestrator, `start()` + `runOnce()`.
+- `main(String[])`: un solo argomento, path al JSON (mirror di `DataOwnerService.main`, anch'esso un solo argomento: il file locale dichiara al proprio interno dove si trova il file live, che può anche essere assente al primo avvio) — carica la config, cattura `LinkageUnitConfigException` con messaggio pulito + `exit(1)`, costruisce l'orchestrator, `start()` + `runOnce()`.
 
 `LinkageUnitOrchestratorRoutingTest` → rinominato `LinkageUnitOrchestratorValidationTest`, 3 casi riscritti su `anyPartyDuplicateFree(...)` (boolean invece di `LinkStrategy`).
 

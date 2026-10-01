@@ -1,0 +1,13 @@
+{
+  "party": "A",
+  "debug": true,
+  "dataSource": {
+    "type": "CSV",
+    "csv": {
+      "delimiter": ";",
+      "filePath": "primat-examples/src/main/resources/ncvoters_naumann/full/party_A.csv"
+    }
+  },
+  "liveConfigPath": "party_A_live.json",
+  "bootstrapMqttBrokerUrl": "tcp://localhost:1883"
+}

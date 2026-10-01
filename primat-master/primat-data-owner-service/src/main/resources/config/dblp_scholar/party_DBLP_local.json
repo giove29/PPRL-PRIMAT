@@ -1,0 +1,13 @@
+{
+  "party": "DBLP",
+  "debug": true,
+  "dataSource": {
+    "type": "CSV",
+    "csv": {
+      "delimiter": ";",
+      "filePath": "primat-examples/src/main/resources/dblp_scholar/party_DBLP.csv"
+    }
+  },
+  "liveConfigPath": "party_DBLP_live.json",
+  "bootstrapMqttBrokerUrl": "tcp://localhost:1883"
+}

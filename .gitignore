@@ -48,5 +48,4 @@ release.properties
 mscdap_debug_output.csv
 primat-master/python_evaluation/*.csv
 primat-master/python_evaluation/*.png
-primat-master/tmp/
 link_table_overview.pdf

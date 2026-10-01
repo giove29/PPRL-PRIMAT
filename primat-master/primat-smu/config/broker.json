@@ -1,0 +1,4 @@
+{
+  "_note": "Indirizzo MQTT corrente, usato sia dalla SMU per le proprie connessioni sia come valore 'mqttBrokerUrl' pushato ad ogni Data Owner (vedi build_config_push). Letto fresco ad ogni operazione, mai in cache. Per una vera migrazione di broker (non solo un fix di questo file) usare l'opzione di menu 'Migra broker MQTT', che coordina l'ordine corretto invece di limitarsi a sovrascrivere questo valore.",
+  "mqttBrokerUrl": "tcp://localhost:1883"
+}

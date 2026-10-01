@@ -10,9 +10,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.config.DataOwnerConfigLoader;
@@ -40,11 +45,27 @@ class DataOwnerPipelineConstantColumnTest {
 				+ "\"columns\": [" + partyColumnJson + "," + globalIdColumnJson + ","
 				+ "{\"index\": 0, \"name\": \"ID\", \"role\": \"ID\"},"
 				+ "{\"index\": 1, \"name\": \"FN\", \"role\": \"QID\", \"preprocessing\": [ {\"type\":\"TRIM\"}, {\"type\":\"UPPERCASE\"}, {\"type\":\"REMOVE_ACCENTS\"}, {\"type\":\"REMOVE_SPECIAL_CHARS\"}, {\"type\":\"TRUNCATE\",\"from\":0,\"to\":20} ]}]}";
-		final Path jsonPath = dir.resolve("config.json");
-		Files.writeString(jsonPath, json, StandardCharsets.UTF_8);
-		jsonPath.toFile().deleteOnExit();
+		final JsonObject full = JsonParser.parseString(json).getAsJsonObject();
+		final JsonObject local = new JsonObject();
+		for (final String key : new String[] { "party", "debug", "dataSource" }) {
+			if (full.has(key)) {
+				local.add(key, full.get(key));
+			}
+		}
+		final JsonObject live = new JsonObject();
+		for (final Map.Entry<String, JsonElement> entry : full.entrySet()) {
+			if (!local.has(entry.getKey())) {
+				live.add(entry.getKey(), entry.getValue());
+			}
+		}
+		final Path localPath = dir.resolve("config_local.json");
+		final Path livePath = dir.resolve("config_live.json");
+		Files.writeString(localPath, local.toString(), StandardCharsets.UTF_8);
+		Files.writeString(livePath, live.toString(), StandardCharsets.UTF_8);
+		localPath.toFile().deleteOnExit();
+		livePath.toFile().deleteOnExit();
 
-		final DataOwnerConfig config = DataOwnerConfigLoader.load(jsonPath);
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(localPath, livePath);
 		return new DataOwnerPipeline(
 				new CsvRecordSource(config.getCsvFilePath(), config.isCsvHasHeader(), config.getCsvDelimiter()),
 				config).run();

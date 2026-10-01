@@ -12,3 +12,4 @@ pom.xml.versionsBackup
 *.lck
 /.idea
 /ncvoters_naumann/raw/
+/dblp_scholar/raw/

@@ -71,8 +71,19 @@ public class DataOwnerService {
 	 * col contenuto applicato, anche attraverso un riavvio del processo.
 	 */
 	private volatile String appliedConfigVersion;
-	private final Path configPath;
-	private final MqttClientWrapper client;
+	/** Mai riscritto da questo processo: solo letto all'avvio da {@link #main}. */
+	private final Path localConfigPath;
+	/** Riscritto atomicamente ad ogni {@link #handleConfigPush} accettata. */
+	private final Path liveConfigPath;
+	/**
+	 * Non piu' {@code final}: un {@link ConfigPush} che cambia {@code mqttBrokerUrl}
+	 * sostituisce l'istanza con una connessa al nuovo broker, dopo averla
+	 * verificata (vedi {@link #handleConfigPush}) - stesso trattamento gia'
+	 * riservato a {@link #config}.
+	 */
+	private volatile MqttClientWrapper client;
+	/** Timeout di verifica di un nuovo {@code mqttBrokerUrl} prima di accettare lo switch (vedi {@link #handleConfigPush}). */
+	private static final long BROKER_SWITCH_VERIFY_TIMEOUT_SECONDS = 15L;
 	private final Gson gson = new Gson();
 	/** Solo per la scrittura dei file di config su disco (leggibili); i payload MQTT restano compatti su {@link #gson}. */
 	private final Gson fileGson = new GsonBuilder().setPrettyPrinting().create();
@@ -108,16 +119,19 @@ public class DataOwnerService {
 	});
 
 	/**
-	 * @param config     configurazione locale del Data Owner (party, sorgente dati,
-	 *                   endpoint broker)
-	 * @param configPath percorso del file JSON da cui {@code config} e' stata
-	 *                   caricata: riusato per riscrivere/ricaricare il file a
-	 *                   ogni {@link ConfigPush} accettata dalla SMU
+	 * @param config         configurazione del Data Owner (party, sorgente dati,
+	 *                       endpoint broker - gia' fusa da locale+live)
+	 * @param localConfigPath percorso del file JSON locale (mai riscritto da
+	 *                       questo processo)
+	 * @param liveConfigPath percorso del file JSON live: riusato per riscrivere/
+	 *                       ricaricare il file a ogni {@link ConfigPush} accettata
+	 *                       dalla SMU
 	 * @throws MqttException se il client MQTT non può essere istanziato
 	 */
-	public DataOwnerService(DataOwnerConfig config, Path configPath) throws MqttException {
+	public DataOwnerService(DataOwnerConfig config, Path localConfigPath, Path liveConfigPath) throws MqttException {
 		this.config = config;
-		this.configPath = configPath;
+		this.localConfigPath = localConfigPath;
+		this.liveConfigPath = liveConfigPath;
 		this.appliedConfigVersion = config.getVersion();
 		this.client = new MqttClientWrapper(config.getMqttBrokerUrl(), config.getMqttClientId());
 	}
@@ -132,21 +146,38 @@ public class DataOwnerService {
 	 */
 	public void start() throws MqttException {
 		client.connect();
-		client.subscribe(MqttTopics.commandTopic(config.getParty()), (topic, message) -> {
+		subscribeAll(client);
+		System.out.println("[" + config.getParty() + "] in ascolto su " + MqttTopics.commandTopic(config.getParty())
+				+ ", " + MqttTopics.configTopic(config.getParty()) + " e "
+				+ MqttTopics.checkVersionTopic(config.getParty()));
+	}
+
+	/**
+	 * Sottoscrive i 3 topic del Data Owner sul client dato — estratto da
+	 * {@link #start()} per essere riusabile anche dopo un hot-reconnect verso un
+	 * nuovo {@code mqttBrokerUrl} (vedi {@link #handleConfigPush}), dove il
+	 * client passato non e' piu' necessariamente {@link #client} al momento
+	 * della chiamata ma lo diventa subito dopo.
+	 */
+	private void subscribeAll(MqttClientWrapper target) throws MqttException {
+		target.subscribe(MqttTopics.commandTopic(config.getParty()), (topic, message) -> {
 			final StartCommand command = gson.fromJson(new String(message.getPayload(), StandardCharsets.UTF_8),
 					StartCommand.class);
 			commandExecutor.submit(() -> handleStartCommand(command));
 		});
-		client.subscribe(MqttTopics.configTopic(config.getParty()), (topic, message) -> {
+		target.subscribe(MqttTopics.configTopic(config.getParty()), (topic, message) -> {
 			final ConfigPush push = gson.fromJson(new String(message.getPayload(), StandardCharsets.UTF_8),
 					ConfigPush.class);
 			configExecutor.submit(() -> handleConfigPush(push));
 		});
-		client.subscribe(MqttTopics.checkVersionTopic(config.getParty()), (topic, message) -> {
+		target.subscribe(MqttTopics.checkVersionTopic(config.getParty()), (topic, message) -> {
 			// Lettura volatile + publish, O(1): nessun accesso a disco/pipeline che
 			// possa bloccare il thread di callback Paho, quindi risponde qui
 			// direttamente, senza passare da un executor dedicato (a differenza di
-			// handleStartCommand/handleConfigPush).
+			// handleStartCommand/handleConfigPush). Pubblica su this.client (non sul
+			// parametro target): per il momento in cui questo listener scatta,
+			// this.client e' sempre il client corretto, anche se nel frattempo e'
+			// cambiato per un hot-reconnect.
 			try {
 				client.publish(MqttTopics.versionReportTopic(config.getParty()),
 						gson.toJson(new ConfigVersionReport(config.getParty(), appliedConfigVersion)));
@@ -155,9 +186,6 @@ public class DataOwnerService {
 						+ e.getMessage());
 			}
 		});
-		System.out.println("[" + config.getParty() + "] in ascolto su " + MqttTopics.commandTopic(config.getParty())
-				+ ", " + MqttTopics.configTopic(config.getParty()) + " e "
-				+ MqttTopics.checkVersionTopic(config.getParty()));
 	}
 
 	/**
@@ -173,6 +201,18 @@ public class DataOwnerService {
 		final DataOwnerConfig cfg = this.config;
 		final String runId = command.getRunId();
 		System.out.println("[" + cfg.getParty() + "] comando ricevuto per run " + runId);
+		if (cfg.isPending()) {
+			System.err.println("[" + cfg.getParty() + "] StartCommand ricevuto ma non ancora configurato dalla SMU "
+					+ "(version=" + cfg.getVersion() + "): nessuna ConfigPush ancora accettata da questo processo");
+			try {
+				client.publish(MqttTopics.doRunStatusTopic(cfg.getParty()), gson.toJson(new StatusMessage(runId,
+						cfg.getParty(), "FAILED", "Data Owner non ancora configurato dalla SMU")));
+			} catch (MqttException publishFailure) {
+				System.err.println("[" + cfg.getParty() + "] impossibile pubblicare lo stato di errore: "
+						+ publishFailure.getMessage());
+			}
+			return;
+		}
 		try {
 			final RecordSource source = newRecordSource(cfg);
 			final List<Record> encodedRecords = new DataOwnerPipeline(source, cfg).run();
@@ -203,25 +243,41 @@ public class DataOwnerService {
 
 	/**
 	 * Fonde {@link ConfigPush#getConfigJson()} (chiavi {@code columns}/
-	 * {@code bloomFilter}/{@code missingValueHandling}/{@code hmacKey}, gia'
-	 * risolte dalla SMU) dentro il file JSON locale, sovrascrivendo solo quelle
-	 * chiavi — identita' di party/broker/sorgente dati restano quelle locali,
-	 * mai spedite dalla SMU. Scrive su un file temporaneo, valida con
-	 * {@link DataOwnerConfigLoader#load} + uno smoke-test (costruzione
-	 * dell'hardener e calcolo di {@code computeEffectiveRbfBitLength()}/
-	 * {@code computeConfigHash()}), e solo se tutto va a buon fine sostituisce
-	 * il file reale e la config live; altrimenti pubblica un {@link ConfigAck}
-	 * di errore senza toccare ne' il file ne' la config in uso.
+	 * {@code bloomFilter}/{@code missingValueHandling}/{@code hmacKey}/
+	 * {@code mqttBrokerUrl}, gia' risolte dalla SMU) dentro il file JSON live,
+	 * sovrascrivendo solo quelle chiavi — identita' di party/sorgente dati
+	 * restano quelle del file locale, mai spedite dalla SMU. Scrive su un file
+	 * temporaneo, valida con {@link DataOwnerConfigLoader#load} + uno
+	 * smoke-test (costruzione dell'hardener e calcolo di
+	 * {@code computeEffectiveRbfBitLength()}/{@code computeConfigHash()}).
+	 * <p>
+	 * Se {@code mqttBrokerUrl} cambia, applica "verifica-poi-switch": prima di
+	 * accettare qualunque cosa, si connette al NUOVO broker con un timeout
+	 * limitato ({@link #BROKER_SWITCH_VERIFY_TIMEOUT_SECONDS}); se irraggiungibile
+	 * l'intera push e' rifiutata (stesso trattamento di un qualunque altro
+	 * errore di validazione, file/config correnti invariati). Se raggiungibile:
+	 * file sostituito atomicamente, config in memoria aggiornata, ack di
+	 * successo pubblicato **sul client vecchio** (quello su cui e' arrivata
+	 * questa push — la SMU deve ricevere conferma prima che il Data Owner lasci
+	 * quel broker), e solo a quel punto il client attivo passa al nuovo
+	 * (disconnessione del vecchio + nuova sottoscrizione sul nuovo). Qualunque
+	 * fallimento successivo alla verifica lascia comunque intatti file/config/
+	 * client in uso.
 	 */
 	private void handleConfigPush(ConfigPush push) {
 		final String party = config.getParty();
 		System.out.println("[" + party + "] push di configurazione ricevuta, versione " + push.getVersion());
-		final Path tempPath = configPath.resolveSibling(configPath.getFileName() + ".tmp");
+		// Catturato subito: l'ack di questa push esce sempre su questo client, mai
+		// su this.client, che potrebbe cambiare prima della fine del metodo.
+		final MqttClientWrapper ackClient = this.client;
+		final Path tempPath = liveConfigPath.resolveSibling(liveConfigPath.getFileName() + ".tmp");
+		MqttClientWrapper candidateClient = null;
 		try {
 			final JsonObject incoming = JsonParser.parseString(push.getConfigJson()).getAsJsonObject();
-			final String currentJson = Files.readString(configPath, StandardCharsets.UTF_8);
+			final String currentJson = Files.readString(liveConfigPath, StandardCharsets.UTF_8);
 			final JsonObject merged = JsonParser.parseString(currentJson).getAsJsonObject();
-			for (final String key : new String[] { "columns", "bloomFilter", "missingValueHandling", "hmacKey" }) {
+			for (final String key : new String[] { "columns", "bloomFilter", "missingValueHandling", "hmacKey",
+					"mqttBrokerUrl" }) {
 				if (incoming.has(key)) {
 					merged.add(key, incoming.get(key));
 				}
@@ -229,25 +285,49 @@ public class DataOwnerService {
 			merged.addProperty("version", push.getVersion());
 			Files.writeString(tempPath, fileGson.toJson(merged), StandardCharsets.UTF_8);
 
-			final DataOwnerConfig newConfig = DataOwnerConfigLoader.load(tempPath);
+			final DataOwnerConfig newConfig = DataOwnerConfigLoader.load(localConfigPath, tempPath);
 			// Smoke-test: esercita davvero la catena di hardening e il calcolo del
 			// digest una volta, invece di fidarsi del solo parsing/validazione JSON.
 			newConfig.computeEffectiveRbfBitLength();
 			newConfig.computeConfigHash();
 
-			Files.move(tempPath, configPath, StandardCopyOption.REPLACE_EXISTING);
+			final String oldBrokerUrl = this.config.getMqttBrokerUrl();
+			final boolean brokerChanged = !newConfig.getMqttBrokerUrl().equals(oldBrokerUrl);
+			if (brokerChanged) {
+				candidateClient = new MqttClientWrapper(newConfig.getMqttBrokerUrl(), newConfig.getMqttClientId());
+				candidateClient.connect(BROKER_SWITCH_VERIFY_TIMEOUT_SECONDS);
+			}
+
+			Files.move(tempPath, liveConfigPath, StandardCopyOption.REPLACE_EXISTING);
 			this.config = newConfig;
 			this.appliedConfigVersion = push.getVersion();
-			client.publish(MqttTopics.configAckTopic(party),
+			ackClient.publish(MqttTopics.configAckTopic(party),
 					gson.toJson(new ConfigAck(party, push.getVersion(), "OK", "configurazione applicata")));
 			System.out.println("[" + party + "] configurazione v" + push.getVersion() + " applicata con successo");
 			System.out.println(newConfig.describe());
+
+			if (brokerChanged) {
+				this.client = candidateClient;
+				subscribeAll(candidateClient);
+				ackClient.disconnect();
+				System.out.println("[" + party + "] passato dal broker " + oldBrokerUrl + " al nuovo broker "
+						+ newConfig.getMqttBrokerUrl());
+			}
 		} catch (DataOwnerConfigException | IOException | MqttException | RuntimeException e) {
 			deleteQuietly(tempPath);
+			if (candidateClient != null) {
+				try {
+					candidateClient.disconnect();
+				} catch (Exception ignored) {
+					// best-effort: la push e' comunque rifiutata, this.client resta quello
+					// corretto (ackClient), un client candidato mai installato non ha
+					// alcun effetto osservabile se non viene disconnesso correttamente.
+				}
+			}
 			System.err.println("[" + party + "] push di configurazione v" + push.getVersion() + " rifiutata: "
 					+ e.getMessage());
 			try {
-				client.publish(MqttTopics.configAckTopic(party),
+				ackClient.publish(MqttTopics.configAckTopic(party),
 						gson.toJson(new ConfigAck(party, push.getVersion(), "ERROR", e.getMessage())));
 			} catch (MqttException publishFailure) {
 				System.err.println("[" + party + "] impossibile pubblicare l'ack di errore: "
@@ -299,20 +379,23 @@ public class DataOwnerService {
 	/**
 	 * Avvia il Data Owner Service come processo standalone.
 	 *
-	 * @param args {@code configJsonPath}, es.
-	 *             {@code primat-data-owner-service/src/main/resources/config/party_A.json}
+	 * @param args {@code localConfigJsonPath}, es.
+	 *             {@code primat-data-owner-service/src/main/resources/config/examples/example_local.json}
+	 *             — il file locale dichiara al proprio interno ({@code liveConfigPath}) dove si
+	 *             trova (o dovra' essere creato) il file "live"; vedi
+	 *             {@link DataOwnerConfigLoader#loadBootstrap(Path)}.
 	 * @throws Exception se l'avvio del servizio fallisce
 	 */
 	public static void main(String[] args) throws Exception {
 		if (args.length < 1) {
-			System.err.println("Uso: DataOwnerService <configJsonPath>");
+			System.err.println("Uso: DataOwnerService <localConfigJsonPath>");
 			System.exit(1);
 		}
 
-		final Path configPath = Paths.get(args[0]);
-		final DataOwnerConfig config;
+		final Path localConfigPath = Paths.get(args[0]);
+		final DataOwnerConfigLoader.BootstrapResult bootstrap;
 		try {
-			config = DataOwnerConfigLoader.load(configPath);
+			bootstrap = DataOwnerConfigLoader.loadBootstrap(localConfigPath);
 		}
 		catch (DataOwnerConfigException e) {
 			// Errore di configurazione utente: messaggio leggibile, niente stack
@@ -322,9 +405,9 @@ public class DataOwnerService {
 			return;
 		}
 
-		System.out.println(config.describe());
+		System.out.println(bootstrap.config.describe());
 
-		final DataOwnerService service = new DataOwnerService(config, configPath);
+		final DataOwnerService service = new DataOwnerService(bootstrap.config, localConfigPath, bootstrap.livePath);
 		service.start();
 		service.awaitForever();
 	}

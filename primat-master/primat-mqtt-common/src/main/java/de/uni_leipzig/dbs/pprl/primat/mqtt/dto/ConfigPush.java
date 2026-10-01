@@ -10,10 +10,13 @@ package de.uni_leipzig.dbs.pprl.primat.mqtt.dto;
  * operazione: {@link #getConfigJson()} contiene gia' schema (mapping
  * colonna→QID) ed encoding comune fusi insieme dalla SMU, come frammento JSON
  * grezzo con le sole chiavi {@code columns}/{@code bloomFilter}/
- * {@code missingValueHandling}/{@code hmacKey} — il Data Owner lo fonde nel
- * proprio file di configurazione locale sovrascrivendo solo quelle chiavi
- * (identita' di party/broker/sorgente dati restano locali, mai spedite dalla
- * SMU). Disaccoppiato dal modello di dominio.
+ * {@code missingValueHandling}/{@code hmacKey}/{@code mqttBrokerUrl} — il Data
+ * Owner lo fonde nel proprio file di configurazione "live" sovrascrivendo solo
+ * quelle chiavi (identita' di party/sorgente dati restano nel file "locale",
+ * mai spedite dalla SMU; {@code mqttBrokerUrl} invece e' pushabile e
+ * hot-riconfigurabile — vedi {@code DataOwnerService.handleConfigPush}, che
+ * verifica il nuovo broker prima di abbandonare il vecchio). Disaccoppiato dal
+ * modello di dominio.
  */
 public class ConfigPush {
 
@@ -36,7 +39,7 @@ public class ConfigPush {
 		this.version = version;
 	}
 
-	/** @return frammento JSON grezzo con le sole chiavi da sovrascrivere nel file locale del Data Owner. */
+	/** @return frammento JSON grezzo con le sole chiavi da sovrascrivere nel file "live" del Data Owner. */
 	public String getConfigJson() {
 		return configJson;
 	}

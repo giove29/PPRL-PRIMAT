@@ -149,8 +149,12 @@ public class MqttClientWrapper {
 	}
 
 	/**
-	 * Disconnette e chiude il client. Da invocare solo all'arresto definitivo
-	 * del processo, non tra un run e il successivo.
+	 * Disconnette e chiude il client. Da invocare all'arresto definitivo del
+	 * processo, non tra un run e il successivo — o, lato Data Owner, quando si
+	 * abbandona questo client dopo uno switch verificato verso un nuovo
+	 * {@code mqttBrokerUrl} (vedi {@code DataOwnerService.handleConfigPush}),
+	 * dove il client va comunque ricostruito da zero (nuova istanza) anziché
+	 * riconnesso, perché punta a un host/porta diversi.
 	 *
 	 * @throws MqttException se la disconnessione fallisce
 	 */

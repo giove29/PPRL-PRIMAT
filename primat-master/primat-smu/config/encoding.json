@@ -1,8 +1,8 @@
 {
-  "_note": "Encoding comune a tutti i DO coinvolti - test febrl4_1_mixed su tutte le 6 colonne QID gia' dichiarate in party_org_clean.json/party_org1_dirty.json (given_name, surname, suburb, postcode, state, date_of_birth). La catena di preprocessing per colonna vive nello schema per-DO (do_<party>.json), non qui.",
+  "_note": "Encoding comune a tutti i DO coinvolti - test febrl4_1_mixed su tutte le 6 colonne QID gia' dichiarate in party_org_clean_live.json/party_org1_dirty_live.json (given_name, surname, suburb, postcode, state, date_of_birth). La catena di preprocessing per colonna vive nello schema per-DO (do_<party>.json), non qui.",
   "bloomFilter": {
     "length": 1024,
-    "hardeningChain": [{ "type": "XOR_FOLD", "foldCount": 1 }]
+    "hardeningChain": []
   },
   "missingValueHandling": {
     "enabled": false,
