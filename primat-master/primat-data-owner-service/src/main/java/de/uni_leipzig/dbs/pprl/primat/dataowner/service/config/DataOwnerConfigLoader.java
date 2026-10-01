@@ -85,9 +85,11 @@ public final class DataOwnerConfigLoader {
 		final List<String> missingValueAnchorPriority = missingValueHandlingEnabled ? mvh.getAnchorPriority()
 				: List.of();
 
+		final String version = raw.getVersion() != null ? raw.getVersion() : "0";
+
 		return new DataOwnerConfig(raw.getParty(), dataSource.getType(), csvFilePath, csvHasHeader, csvDelimiter, dbConfig,
 				raw.getMqttBrokerUrl(), raw.getColumns(), bfLength, hardener, raw.isDebug(), missingValueHandlingEnabled,
-				missingValueAnchorPriority, hardeningDescriptions, raw.getHmacKey());
+				missingValueAnchorPriority, hardeningDescriptions, raw.getHmacKey(), version);
 	}
 
 	private static String readFile(Path jsonPath) throws DataOwnerConfigException {
@@ -419,10 +421,6 @@ public final class DataOwnerConfigLoader {
 				System.out.println("Attenzione: XOR-Folding con foldCount=" + foldCount
 						+ " e' rischioso a livello di performance e puo' degradare eccessivamente i dati (perdita di informazione nell'RBF).");
 			}
-			System.out.println(
-					"Attenzione: XOR-Folding attivo - 'rbfSize' nella configurazione della Linkage Unit deve essere "
-							+ (bfLength >> foldCount) + " (= " + bfLength + " >> " + foldCount
-							+ "), cosi' il blocking usa la reale dimensione dell'RBF dopo il folding.");
 			return new XorFolder(foldCount);
 		}
 

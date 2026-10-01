@@ -534,8 +534,9 @@ def _phase_check_version(parties, expected_version):
 
     outdated = [p for p, (_, payload) in received.items() if payload.get("appliedVersion") != expected_version]
     if outdated:
+        detail = ", ".join(p + "(v" + str(received[p][1].get("appliedVersion")) + ")" for p in sorted(outdated))
         print("I seguenti DO non sono aggiornati alla versione v" + expected_version
-              + ", eseguire prima 'Configura i DO': " + ", ".join(sorted(outdated)))
+              + ", eseguire prima 'Configura i DO': " + detail)
         return False
 
     print("Tutti i DO sono aggiornati alla versione v" + expected_version + ".")

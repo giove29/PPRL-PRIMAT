@@ -42,6 +42,7 @@ public class DataOwnerConfig {
 	private final List<String> missingValueAnchorPriority;
 	private final List<String> hardeningDescriptions;
 	private final String hmacKey;
+	private final String version;
 
 	/**
 	 * Costruito esclusivamente da {@link DataOwnerConfigLoader} dopo la
@@ -71,11 +72,16 @@ public class DataOwnerConfig {
 	 * @param hmacKey                     chiave HMAC usata da {@code RandomHashing} per l'hashing dei bit
 	 *                                     dell'RBF, {@code null}/vuota per usare il {@code DEFAULT_KEY} di
 	 *                                     fallback; configurabile via la SMU (funzionalita' "Configura i DO")
+	 * @param version                     versione della configurazione applicata, cosi' come scritta nel file
+	 *                                     JSON (stesso campo aggiornato da {@code DataOwnerService.handleConfigPush}
+	 *                                     ad ogni {@code ConfigPush} accettata); {@code "0"} se il file non e'
+	 *                                     mai stato toccato da una push
 	 */
 	public DataOwnerConfig(String party, DataSourceType dataSourceType, String csvFilePath, boolean csvHasHeader,
 			char csvDelimiter, DbSourceConfig dbConfig, String mqttBrokerUrl, List<ColumnConfig> columns, int bloomFilterLength,
 			BloomFilterHardener hardener, boolean debug, boolean missingValueHandlingEnabled,
-			List<String> missingValueAnchorPriority, List<String> hardeningDescriptions, String hmacKey) {
+			List<String> missingValueAnchorPriority, List<String> hardeningDescriptions, String hmacKey,
+			String version) {
 		this.party = party;
 		this.dataSourceType = dataSourceType;
 		this.csvFilePath = csvFilePath;
@@ -92,6 +98,7 @@ public class DataOwnerConfig {
 		this.missingValueAnchorPriority = missingValueAnchorPriority;
 		this.hardeningDescriptions = hardeningDescriptions;
 		this.hmacKey = hmacKey;
+		this.version = version;
 	}
 
 	public String getParty() {
@@ -151,6 +158,11 @@ public class DataOwnerConfig {
 	 */
 	public String getHmacKey() {
 		return hmacKey;
+	}
+
+	/** @return versione della configurazione applicata, cosi' come scritta nel file JSON ({@code "0"} se mai aggiornata da una ConfigPush). */
+	public String getVersion() {
+		return version;
 	}
 
 	/**
@@ -241,6 +253,7 @@ public class DataOwnerConfig {
 	public String describe() {
 		final StringBuilder sb = new StringBuilder();
 		sb.append("==================== Data Owner [").append(party).append("] ====================\n");
+		sb.append("Versione:               ").append(version).append('\n');
 		sb.append("Broker MQTT:            ").append(mqttBrokerUrl).append('\n');
 		sb.append("Sorgente dati:          ").append(dataSourceType);
 		if (dataSourceType == DataSourceType.CSV) {

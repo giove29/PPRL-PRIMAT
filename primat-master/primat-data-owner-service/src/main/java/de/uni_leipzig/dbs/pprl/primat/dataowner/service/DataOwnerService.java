@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 import org.eclipse.paho.client.mqttv3.MqttException;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -60,19 +61,21 @@ public class DataOwnerService {
 	 */
 	private volatile DataOwnerConfig config;
 	/**
-	 * Versione dell'ultima {@link ConfigPush} accettata da questo processo,
-	 * riportata alla SMU su richiesta ({@link #start()}, topic {@link
-	 * MqttTopics#checkVersionTopic}). Sentinella {@code "0"} se nessuna push
-	 * e' mai stata accettata da quando il processo e' partito — tracciata solo
-	 * in memoria, non persistita nel file di configurazione: un riavvio del
-	 * processo richiede quindi un nuovo reconfigure prima del prossimo run,
-	 * anche se il file su disco ha gia' il contenuto giusto (comportamento
-	 * conservativo scelto deliberatamente, vedi CLAUDE.md).
+	 * Versione dell'ultima {@link ConfigPush} accettata, riportata alla SMU su
+	 * richiesta ({@link #start()}, topic {@link MqttTopics#checkVersionTopic}).
+	 * Seminata all'avvio dal campo {@code version} del file JSON locale
+	 * ({@link DataOwnerConfig#getVersion()}, {@code "0"} se il file non e' mai
+	 * stato toccato da una push) e riallineata ad ogni {@link #handleConfigPush}
+	 * accettata, che scrive la nuova versione nello stesso file, nella stessa
+	 * operazione atomica del resto della config — resta quindi sempre coerente
+	 * col contenuto applicato, anche attraverso un riavvio del processo.
 	 */
-	private volatile String appliedConfigVersion = "0";
+	private volatile String appliedConfigVersion;
 	private final Path configPath;
 	private final MqttClientWrapper client;
 	private final Gson gson = new Gson();
+	/** Solo per la scrittura dei file di config su disco (leggibili); i payload MQTT restano compatti su {@link #gson}. */
+	private final Gson fileGson = new GsonBuilder().setPrettyPrinting().create();
 	/**
 	 * Esegue {@link #handleStartCommand} fuori dal thread di callback di Paho
 	 * ({@code CommsCallback}), che è lo stesso thread su cui vengono anche
@@ -115,6 +118,7 @@ public class DataOwnerService {
 	public DataOwnerService(DataOwnerConfig config, Path configPath) throws MqttException {
 		this.config = config;
 		this.configPath = configPath;
+		this.appliedConfigVersion = config.getVersion();
 		this.client = new MqttClientWrapper(config.getMqttBrokerUrl(), config.getMqttClientId());
 	}
 
@@ -222,7 +226,8 @@ public class DataOwnerService {
 					merged.add(key, incoming.get(key));
 				}
 			}
-			Files.writeString(tempPath, gson.toJson(merged), StandardCharsets.UTF_8);
+			merged.addProperty("version", push.getVersion());
+			Files.writeString(tempPath, fileGson.toJson(merged), StandardCharsets.UTF_8);
 
 			final DataOwnerConfig newConfig = DataOwnerConfigLoader.load(tempPath);
 			// Smoke-test: esercita davvero la catena di hardening e il calcolo del

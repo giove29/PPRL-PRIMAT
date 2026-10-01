@@ -4,8 +4,12 @@
  */
 package de.uni_leipzig.dbs.pprl.primat.lu.service;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -25,6 +29,9 @@ import java.util.stream.Collectors;
 import org.eclipse.paho.client.mqttv3.MqttException;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import de.uni_leipzig.dbs.pprl.primat.common.model.Cluster;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Party;
@@ -72,8 +79,11 @@ import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.StatusMessage;
 public class LinkageUnitOrchestrator {
 
 	private final LinkageUnitConfig config;
+	private final Path configPath;
 	private final MqttClientWrapper client;
 	private final Gson gson = new Gson();
+	/** Solo per la scrittura del file di config su disco (leggibile); i payload MQTT restano compatti su {@link #gson}. */
+	private final Gson fileGson = new GsonBuilder().setPrettyPrinting().create();
 	/**
 	 * Esegue {@link #handleLuConfigPush} fuori dal thread di callback di Paho,
 	 * stesso motivo/pattern di {@code DataOwnerService.commandExecutor}: un
@@ -88,12 +98,18 @@ public class LinkageUnitOrchestrator {
 	});
 
 	/**
-	 * @param config configurazione completa del run (party, strategia, DB
-	 *               dedicato, tuning), caricata da {@link LinkageUnitConfigLoader}
+	 * @param config     configurazione completa del run (party, strategia, DB
+	 *                   dedicato, tuning), caricata da {@link LinkageUnitConfigLoader}
+	 * @param configPath percorso del file JSON da cui {@code config} e' stata
+	 *                   caricata: serve a {@link #handleLuConfigPush} per
+	 *                   persistere su disco un {@code rbfSize} riconfigurato a
+	 *                   caldo dalla SMU, mirror di {@code
+	 *                   DataOwnerService#configPath}
 	 * @throws Exception se il client MQTT non può essere istanziato
 	 */
-	public LinkageUnitOrchestrator(LinkageUnitConfig config) throws Exception {
+	public LinkageUnitOrchestrator(LinkageUnitConfig config, Path configPath) throws Exception {
 		this.config = config;
+		this.configPath = configPath;
 		this.client = new MqttClientWrapper(config.getMqttBrokerUrl(), "linkage-unit-orchestrator");
 	}
 
@@ -161,12 +177,15 @@ public class LinkageUnitOrchestrator {
 	 * StartCommand, fase 2): se {@code rbfSize} atteso dalla SMU differisce da
 	 * quello attualmente configurato (es. la SMU ha appena rilevato un
 	 * hardening XOR-fold lato Data Owner non ancora riflesso nel JSON locale
-	 * della Linkage Unit), si riconfigura a caldo ({@link
-	 * LinkageUnitConfig#setRbfSize}) e ristampa la propria configurazione
-	 * aggiornata (mirror di {@code DataOwnerService.handleConfigPush}), poi
-	 * pubblica l'ack su {@link MqttTopics#luConfigAckTopic()}, esegue il run
-	 * ({@link #executeRun}) e pubblica l'esito finale (successo o errore — es.
-	 * digest non corrispondente, matching fallito) su {@link
+	 * della Linkage Unit), si riconfigura a caldo persistendo il nuovo valore
+	 * sul file JSON locale (write-temp/valida/sostituisci, stesso pattern di
+	 * {@code DataOwnerService.handleConfigPush}) prima di applicarlo in
+	 * memoria ({@link LinkageUnitConfig#setRbfSize}) e ristampa la propria
+	 * configurazione aggiornata; se la persistenza fallisce il run non parte
+	 * (ack di errore alla SMU). Altrimenti pubblica l'ack su {@link
+	 * MqttTopics#luConfigAckTopic()}, esegue il run ({@link #executeRun}) e
+	 * pubblica l'esito finale (successo o errore — es. digest non
+	 * corrispondente, matching fallito) su {@link
 	 * MqttTopics#luRunStatusTopic()}. In ogni caso (successo o errore) il
 	 * thread torna libero per il run successivo, il client resta connesso e
 	 * in ascolto.
@@ -179,7 +198,25 @@ public class LinkageUnitOrchestrator {
 			System.out.println("run " + runId + ": rbfSize atteso dalla SMU (" + push.getRbfSize()
 					+ ") diverso da quello attualmente configurato (" + config.getRbfSize()
 					+ "), riconfigurazione in corso...");
-			config.setRbfSize(push.getRbfSize());
+			final Path tempPath = configPath.resolveSibling(configPath.getFileName() + ".tmp");
+			try {
+				final JsonObject current = JsonParser
+						.parseString(Files.readString(configPath, StandardCharsets.UTF_8)).getAsJsonObject();
+				current.addProperty("rbfSize", push.getRbfSize());
+				Files.writeString(tempPath, fileGson.toJson(current), StandardCharsets.UTF_8);
+
+				// Valida l'intero file (non solo il campo appena cambiato), stesso
+				// principio del Data Owner: un JSON locale nel frattempo corrotto per
+				// altri motivi emerge qui invece di essere scritto comunque.
+				final LinkageUnitConfig reloaded = LinkageUnitConfigLoader.load(tempPath);
+				Files.move(tempPath, configPath, StandardCopyOption.REPLACE_EXISTING);
+				config.setRbfSize(reloaded.getRbfSize());
+			} catch (IOException | LinkageUnitConfigException | RuntimeException e) {
+				deleteQuietly(tempPath);
+				publishLuStatusQuietly(MqttTopics.luConfigAckTopic(), runId, "ERROR",
+						"impossibile persistere il nuovo rbfSize (" + push.getRbfSize() + "): " + e.getMessage());
+				return;
+			}
 			System.out.println(config.describe());
 		}
 		try {
@@ -210,6 +247,15 @@ public class LinkageUnitOrchestrator {
 		} catch (MqttException e) {
 			System.err.println("run " + runId + ": impossibile pubblicare l'esito su " + topic + ": "
 					+ e.getMessage());
+		}
+	}
+
+	private static void deleteQuietly(Path path) {
+		try {
+			Files.deleteIfExists(path);
+		} catch (IOException ignored) {
+			// best-effort: un file temporaneo residuo non e' pericoloso, verra'
+			// sovrascritto dal prossimo tentativo (mirror di DataOwnerService).
 		}
 	}
 
@@ -715,9 +761,10 @@ public class LinkageUnitOrchestrator {
 			System.exit(1);
 		}
 
+		final Path configPath = Paths.get(args[0]);
 		final LinkageUnitConfig config;
 		try {
-			config = LinkageUnitConfigLoader.load(Paths.get(args[0]));
+			config = LinkageUnitConfigLoader.load(configPath);
 		}
 		catch (LinkageUnitConfigException e) {
 			System.err.println("Errore di configurazione: " + e.getMessage());
@@ -727,7 +774,7 @@ public class LinkageUnitOrchestrator {
 
 		System.out.println(config.describe());
 
-		final LinkageUnitOrchestrator orchestrator = new LinkageUnitOrchestrator(config);
+		final LinkageUnitOrchestrator orchestrator = new LinkageUnitOrchestrator(config, configPath);
 		orchestrator.start();
 		if (config.getThresholdSpec().isRange()) {
 			orchestrator.runRangeBenchmark();

@@ -22,6 +22,7 @@ public class DataOwnerJsonConfig {
 	private Boolean debug;
 	private MissingValueHandlingJsonConfig missingValueHandling;
 	private String hmacKey;
+	private String version;
 
 	public String getParty() {
 		return party;
@@ -56,5 +57,10 @@ public class DataOwnerJsonConfig {
 	/** @return la chiave HMAC per {@code RandomHashing}, {@code null} se assente (usa il default di fallback). */
 	public String getHmacKey() {
 		return hmacKey;
+	}
+
+	/** @return la versione della configurazione applicata (scritta da {@code DataOwnerService.handleConfigPush}), {@code null} se assente (file mai toccato da una ConfigPush). */
+	public String getVersion() {
+		return version;
 	}
 }
