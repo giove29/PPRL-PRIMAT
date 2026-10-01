@@ -1,0 +1,554 @@
+A;G006326;1;kelly;fisher;severson;36;f;w;raleigh;blaydon;2714;27606;nc
+A;G004517;2;donna;bindas;randall;63;f;w;denver;seipel;802;28037;ct
+A;G004422;3;faolan;ember;brooks;19;f;w;apex;rushing breeze;111;27502;nc
+A;G003053;4;katy;osborne;mcgovern;34;f;w;hillsborough;chatfield;4;27278;la
+A;G001766;5;thomas;a;kovacik;70;m;w;cary;palace;118;27518;pa
+A;G003000;6;robert;lynn;bishop;44;m;w;cary;cambrian;109;27511;tn
+A;G001614;7;julia;elisabeth anne;morency;27;f;w;hickory;20th;950;28601;fl
+A;G000641;8;jeanne;michele;burnette;74;f;w;mills river;sweetwater;238;28759;ar
+A;G002826;9;edward;charles;mikolaitis;84;m;w;wallace;maple creek;148;28466;pa
+A;G002109;10;pattie;batchelor;dudley;69;f;w;vanceboro;lewis;325;28586;nc
+A;G001273;11;courtney;nicole;agee;26;f;w;charlotte;barossa valley;15508;28277;nc
+A;G005854;12;sarah;crile;bienkowski;33;f;w;raleigh;saubranch hill;4209;27616;ca
+A;G001965;13;jacob;anderson;edmund;25;m;w;greenville;brook hollow;1629;27834;nc
+A;G001985;14;richard;gene;reynolds;52;m;w;wilmington;rossmore;1528;28405;nc
+A;G005093;15;holly;m;curtis;45;f;w;raleigh;memory;3713;27604;ny
+A;G005441;16;benjamin;beck;allen;45;m;w;wilmington;39th;1311;28403;nc
+A;G004507;17;janel;p;trzaskos;43;f;w;huntersville;willow breeze;13610;28078;ct
+A;G003585;18;kathleen;june;kirk;44;f;w;monroe;maurice;203;28112;
+A;G002458;19;krinton;lamont;riggins;38;m;b;rowland;union school;714;28383;nc
+A;G000625;20;amanda;nicole;waldrop;34;f;w;durham;willowhaven;5146;27712;
+A;G002509;21;billy;kevin;rhodes;53;m;w;spindale;yelton;205;28160;nc
+A;G005436;22;cameron;russell;benton;26;m;w;wilmington;laurel;107;28401;nc
+A;G002507;23;crystal;dae;swain;45;f;w;southern shores;trinitie;73;27949;nc
+A;G005624;24;queenie;elizabeth;johns;72;f;b;jacksonville;western;5071;28546;mt
+A;G001950;25;karen;;falls;49;f;w;kings mountain;first;914;28086;in
+A;G004817;26;linda;crockett;holland;60;f;b;charlotte;old meadow;5512;28227;nc
+A;G002341;27;thomas;lee;thigpen;38;m;w;lagrange;new hope;1243;28551;nc
+A;G005597;28;shirley;ann;neal;69;f;u;madison;tern;709;27025;il
+A;G000329;29;jeremy;;walters;47;m;w;burgaw;us hwy 117;634;28425;
+A;G004119;30;ralph;daulton;cline;85;m;w;lincolnton;labans;210;28092;
+A;G002762;31;wilma;jean;baer;89;f;w;west jefferson;walter;265;28694;in
+A;G004351;32;danny;michael;pravlik;65;m;w;willow springs;james helen;112;27592;
+A;G004463;33;steven;lane;hooks;59;m;b;kinston;chestnut;609;28501;
+A;G004082;34;brinsley;morgan;stewart;24;f;w;statesville;meadowview;150;28625;nc
+A;G000374;35;malinda;sue;miller;30;u;w;calabash;wilson;1045;28467;
+A;G002517;36;amy;williams;halker;32;f;w;columbia;country estate;155;27925;sc
+A;G001174;37;ibn zawdie;abdul malik;stevenson;46;m;b;concord;kison;1381;28027;pa
+A;G001125;38;darlene;k;smith;70;f;w;salisbury;wedgewood;2405;28146;nc
+A;G004395;39;jeleisha;;wooten;25;u;u;dover;wyse fork;4487;28526;
+A;G003999;40;david;curtis;bowers;41;m;w;mooresville;whitman;122;28115;nc
+A;G003808;41;robert;glenn;henderson;73;m;w;fuquay varina;grayson senters;311;27526;nc
+A;G000394;42;curtis;mark;garst;43;m;u;carolina beach;tennessee;206;28428;
+A;G005280;43;harriett;yvette;johnson;45;f;b;raleigh;lenoxplace;225;27603;nc
+A;G002996;44;kenndra;kamelah;quiles;44;f;b;durham;rosedale;1301;27707;nj
+A;G001621;45;steven;eugene;anderson;50;m;b;hickory;8th av;122;28602;nc
+A;G005837;46;blair;secrest;price;72;m;w;hertford;waterview;106;27944;nc
+A;G002188;47;nicolas;michael;lazatin;20;m;a;boone;stadium justice dorm;189;28608;
+A;G002346;48;nathan;joseph;tyron;24;m;w;fayetteville;rustic haven;4559;28311;nc
+A;G002665;49;robert;leon;loflin;75;m;w;winston salem;brookdale;328;27107;nc
+A;G003036;50;travis;ezekiel joel;johnson;26;m;b;durham;guy walker;405;27703;mi
+A;G001235;51;vanaye;janece;hamilton;32;f;b;concord;deep cove;3037;28027;ca
+A;G003555;52;joseph;donald;vegerano;28;m;u;maggie valley;fie top;3062;28751;ct
+A;G002369;53;joni;elizabeth;wiles;48;f;w;fayetteville;cool spring;120;28301;va
+A;G004174;54;jan;m rassmussen;kelley;61;f;w;middlesex;driver;9307;27557;pa
+A;G002790;55;phyllis;ann;smith;55;f;b;statesville;cherry;803;28677;nc
+A;G005159;56;phillip;weaver;henderson;39;m;w;charlotte;ridgeway;315;28204;oh
+A;G001728;57;valentina;moreno;tengono;21;f;m;charlotte;vinca;9629;28213;oc
+A;G004575;58;derkayla;j;bell;25;f;b;williamston;willow acres;106;27892;
+A;G004720;59;steven;joseph;gerardi;30;m;w;raleigh;melrose ridge;3410;27603;va
+A;G005784;60;khoa;michael;tran;48;m;a;greenville;megan;816;27834;
+A;G004847;61;gary;j;kroeger;62;m;w;charlotte;harrisonwoods;7415;28270;
+A;G002952;62;ashley;renee;brown;32;f;b;durham;hidden meadow;18;27704;nc
+A;G000662;63;ceyanne;elizabeth;brooks;44;f;w;asheville;forest run;14;28803;ms
+A;G001656;64;timothy;alan;phelps;40;m;w;mount ulla;childers;285;28125;
+A;G005879;65;vrushhik;;borad;22;m;a;greenville;white hall;918;27858;
+A;G002196;66;stacie;marie;carter;37;f;i;rowland;donald terry;195;28383;
+A;G003266;67;malinda;teeters;pennington;49;f;w;durham;north exeter;12324;27703;nc
+A;G003936;68;victoria;nashe;mcrae;28;f;b;raeford;main;1393;28376;nc
+A;G006480;69;beverly;ann;yearwood;55;f;b;fuquay varina;highrock lake;509;27526;
+A;G003055;70;traci;jean;tiemann;32;f;u;cary;renaissance park;3417;27513;
+A;G000354;71;carol;johanna;bowman;71;f;w;sunset beach;twisted oak;524;28468;pa
+A;G002029;72;steven;lee;doin;61;m;w;vanceboro;winn;200;28586;ny
+A;G001836;73;robert;charles;nelson;48;m;w;asheboro;dusty path;990;27205;nc
+A;G004022;74;james;lewis;marshall;71;m;w;davidson;river ford;18516;28036;ny
+A;G004001;75;ricky;lynn;summers;58;m;b;statesville;crosby;141;28625;nc
+A;G001628;76;eugene;raymond;fernandez;39;m;o;sherrills ford;ridgeview;7918;28673;ny
+A;G001260;77;kevin;scott;lott;31;m;w;china grove;nc hwy 153;1725;28023;nc
+A;G003562;78;douglas;walter;briggs;60;m;w;pfafftown;millwheel;2920;27040;ny
+A;G001387;79;melanie;brite;riggs;43;f;w;moyock;robert walker;245;27958;va
+A;G005496;80;andrew;daniel;rabon;33;m;w;wilmington;sands hill;104;28409;tx
+A;G003407;81;david;braxton;jones;57;m;w;tarboro;walnut creek;191;27886;nc
+A;G005887;82;shannon;wahlen;flannery;35;f;w;greenville;lance;2537;27858;nc
+A;G002370;83;jeffery;leon;scott;36;m;b;fayetteville;cliffdale;8581;28314;pa
+A;G003160;84;andrew;ali;aghapour;33;m;w;carrboro;sue ann;107;27510;oc
+A;G006605;85;teresa;fowler;harris;57;f;w;macon;us highway 158;1544;27551;va
+A;G005739;86;evelyn;brooks;terry;65;f;w;timberlake;al gray;467;27583;mi
+A;G000462;87;travis;caleb;wright;37;m;w;burnsville;three quarter creek;886;28714;ok
+A;G001817;88;joshua;grant;hawk;37;m;w;holly springs;gremar;156;27540;in
+A;G003573;89;christine;marie;tozier;48;f;w;pfafftown;mount salem;2495;27040;ca
+A;G001954;90;henry;brian;leonard;43;m;w;clarendon;butler town;1040;28432;sc
+A;G005066;91;mabelene;d;young;70;f;b;charlotte;julep;2718;28273;
+A;G006494;92;alexandra;cain;olney;34;f;w;raleigh;bledsoe;314;27601;ca
+A;G006188;93;james;ronnie;joyce;69;m;w;madison;k fork;1761;27025;nc
+A;G000523;94;jon;reed;gallimore;63;m;w;stokesdale;albert;413;27357;nc
+A;G000227;95;mark;elliott;young;45;m;b;wake forest;alstonburg;2408;27587;nc
+A;G000208;96;anna;w;friddle;39;f;w;burlington;st mark s church;1720;27215;
+A;G000992;97;gwendolynn;amber;markolf;27;f;w;concord;cloister;751;28027;sc
+A;G000473;98;thomas;wayne;defrange;66;m;w;mills river;butler bridge;3178;28759;ok
+A;G004026;99;carol;irvin;mitchell;75;f;w;huntersville;pennington;17213;28078;in
+A;G003278;100;terrance;lee;williams;47;m;b;durham;wiltshire;4;27713;nc
+A;G002132;101;gary;joseph;groder;48;m;w;fayetteville;torbay;3516;28311;nc
+A;G004427;102;douglas;cain;garner;23;m;w;sanford;thomas kelly;1485;27330;nc
+A;G003780;103;revera;;arkell;69;f;o;sanford;mt pisgah church;2805;27332;ny
+A;G005192;104;debra;lisa;bloom;58;f;w;charlotte;leaves;7034;28213;ny
+A;G004304;105;curtis;allen;clark;33;m;u;clayton;sugarpine;101;27520;nc
+A;G002795;106;david;robert;halliday;84;m;w;bermuda run;oleander;217;27006;il
+A;G001334;107;elizabeth;marie;baker;47;f;w;hickory;18th av;48;28601;nc
+A;G000898;108;vang;;vang;54;m;a;claremont;bunker hill school;3458;28610;oc
+A;G003933;109;tora;sharquise;edwards;38;f;b;monroe;lind point;219;28110;nc
+A;G000408;110;norman;marshall;gore;56;m;w;riegelwood;justice flynn;692;28456;nc
+A;G000891;111;david;saint john;hennessee;75;m;b;morganton;concord;331;28655;dc
+A;G003611;112;megan;kimberly;riddle;32;f;w;raleigh;wirewood;1071;27605;nc
+A;G001684;113;thomas;patrick;thornton;44;m;w;newton;nc 16;2455;28658;fl
+A;G002764;114;sarah;gillespie;bodin;49;f;w;winston salem;autumn park;1478;27106;tn
+A;G001810;115;carol;elizabeth;eberle;73;f;w;apex;hughes;704;27502;fl
+A;G004044;116;victoria;;turner;59;f;b;statesville;rimrock;482;28625;nc
+A;G002136;117;juan;;santiago;55;m;w;fayetteville;wimbledon;6849;28314;il
+A;G003622;118;dahiana;mercedes;valerio;40;f;o;winston salem;orchard creek;2869;27127;
+A;G000810;119;janae;elisabeth;foster;29;f;w;asheville;cumberland;343;28801;ga
+A;G003790;120;laura;hundley;brown;52;u;u;bunnlevel;winged foot;206;28323;
+A;G001011;121;akhil;;gundabathula;20;m;a;harrisburg;carnation;2501;28075;tx
+A;G003599;122;robin;elizabeth;donahue;20;f;w;cullowhee;west university;159;28723;
+A;G003147;123;mary;elizabeth;inglut;30;f;w;durham;lantern view;12;27703;ny
+A;G005045;124;justin;marshall;mauney;24;m;w;charlotte;providence country club;5804;28277;va
+A;G001473;125;david;windsor;barringer;52;m;w;kinston;cambridge;1713;28504;nc
+A;G000924;126;anthony;miguel;carbonetti;35;m;w;bostic;pleasant view;164;28018;fl
+A;G005839;127;lisa;efigenia;romero;39;f;o;roxboro;person court;113;27573;fl
+A;G004205;128;pamela;d;gunter;64;f;w;raleigh;branchview;1009;27610;nc
+A;G002350;129;altavier;jovante;young;22;m;b;fayetteville;alleghany;517;28304;md
+A;G004489;130;carol;ann;girardi;66;f;w;denver;bay pointe;7965;28037;ny
+A;G003288;131;aurora;d;pryor;49;f;o;durham;taproot;4809;27705;mi
+A;G006260;132;lisa;d;hatley;56;f;w;monroe;goldmine;3009;28110;
+A;G000764;133;kimberly;dawn;edgins;39;f;w;alexander;martin candler;481;28701;nc
+A;G003929;134;carl;cleveland;manning;71;m;w;raeford;fairfield;645;28376;nc
+A;G003648;135;matthew;james;rave;50;m;w;sylva;hillcrest;548;28779;va
+A;G004830;136;chevone;denise;falls;32;f;b;matthews;union;1100;28104;nc
+A;G004965;137;brenda;kay;wade;36;f;b;charlotte;cheviott hill;11921;28213;nc
+A;G000030;138;billie;emma;dodson;42;f;w;mebane;pine valley;2652;27302;ct
+A;G003284;139;karen;lorraine;wielunski;36;f;w;charlotte;kimrod;218;28270;oh
+A;G001439;140;amanda;nicole;pauli;31;f;w;newport;nine foot;446;28570;nc
+A;G001217;141;robin;marie;morris;34;f;w;new london;kendalls church;32070;28127;nc
+A;G003348;142;valerie;jean;everhart hernandez;36;f;w;durham;epping;9;27703;ny
+A;G006446;143;laura;ann;frey;44;f;w;goldsboro;mill;503;27534;nh
+A;G000628;144;beth;ann;phipps;41;f;w;asheville;hillside;205;28801;nc
+A;G001014;145;patsy;daniel;rice;73;f;w;harrisburg;rocky river;3902;28075;
+A;G004671;146;howard;;johnson;75;m;b;white oak;ireland;57;28399;nc
+A;G005679;147;jody;;lennon;52;f;w;chapel hill;cool spring;3021;27514;ny
+A;G003118;148;willa;marie;wilkinson;78;f;w;durham;fortunes ridge;5500;27713;ca
+A;G003238;149;cynthia;mccain;hamrick;53;u;u;bahama;johnson mill;9109;27503;nc
+A;G001389;150;eric;glenn;warren;37;m;w;hampstead;mooney;108;28443;nc
+A;G002182;151;trisha;;slehria;22;u;u;fayetteville;birnam;322;28305;
+A;G003911;152;shavon;diana;moody;36;f;b;ahoskie;liverman mill;917;27910;va
+A;G000254;153;vickie;surrell;robbins;47;f;w;leland;judy;3805;28451;nc
+A;G005186;154;william;clifford;coley;42;m;w;charlotte;water oak;4333;28211;nc
+A;G001309;155;lisa;hollaway;stancil;54;f;w;midland;mineral;8989;28107;nc
+A;G003334;156;meredyth;stewart;albright;21;f;w;wake forest;taylors ridge;3133;27587;nc
+A;G003455;157;keyona;;briscoe;26;f;b;rocky mount;windsor;1728;27801;md
+A;G002345;158;hanha;lee;hobson;24;f;o;fayetteville;kennybunk;7813;28304;nc
+A;G002056;159;carol;yevette;price;36;f;w;new bern;bernhurst;305;28560;nc
+A;G001630;160;charles;franklin;williams;67;m;w;mocksville;magnolia;249;27028;
+A;G004921;161;sydney;marie;respass;26;f;b;charlotte;hendricks chapel;3023;28216;pa
+A;G002839;162;brittany;sharay;elliote;30;f;w;wallace;nc 41;5368;28466;ga
+A;G003051;163;jason;patrick;page;44;m;w;carrboro;hanna;107;27510;pa
+A;G002294;164;darnell;devon;oatman;48;m;b;elizabeth city;shillingtown;899;27909;dc
+A;G005563;165;chelsea;lynn;donovan;36;f;w;wilmington;2nd;509;28401;il
+A;G002087;166;paula;gaskins;adams;42;f;w;jacksonville;myrtlewood;203;28546;nc
+A;G006628;167;rebecca;elizabeth;rubio serrano;27;f;w;millers creek;piney top;118;28651;nc
+A;G000917;168;moua;;lor;36;m;o;glen alpine;scott;106;28628;ca
+A;G002908;169;benjamin;joseph;berenfield;24;m;w;durham;solterra;142;27705;oh
+A;G005962;170;donald;kevin;kearns;41;m;w;asheboro;crestview church;646;27205;nc
+A;G006349;171;samantha;faye;wathen;24;u;w;raleigh;oak meadow;5720;27612;
+A;G003653;172;lee;ann;athey;37;f;w;trinity;nc hwy 62;7293;27370;nc
+A;G002053;173;calton;grover;cannon;37;m;w;durham;james;1820;27707;
+A;G003850;174;randolph;meade;williams;74;m;w;chocowinity;white oak;103;27817;md
+A;G002326;175;robert;lee;carr;52;u;b;wilmington;princess place;4006;28405;
+A;G005774;176;luis;anthony;torres;29;m;o;raleigh;armstrong;1205;27610;ct
+A;G003657;177;lisa;renea;shelley;46;f;w;winston salem;timlic;22;27107;ga
+A;G001664;178;crystal;carswell;feimster;34;f;w;conover;lyle haven;1003;28613;nc
+A;G003016;179;persal;;bethune;65;m;b;durham;cascade falls;500;27713;nc
+A;G006389;180;christopher;levon;mcnair;40;m;b;raleigh;method;718;27607;nc
+A;G004244;181;john;darnell;green;44;m;b;smithfield;booker dairy;406;27577;dc
+A;G003625;182;mark;ellis;podlaski;31;m;w;cornelius;rio oro;20525;28031;nc
+A;G005803;183;tobechi;anuli;nwamara;25;f;b;elizabeth city;road;607;27909;nc
+A;G003367;184;veronica;latirsh;griffin;39;f;o;wake forest;green drake;4012;27587;nc
+A;G003753;185;veronica;louise;meert;30;f;w;wilmington;alpine;525;28403;al
+A;G004785;186;erin;jerolimic;moore;39;f;w;matthews;windsor hill;1922;28105;ny
+A;G000618;187;anna;elise;godden;29;f;w;asheville;pinners cove;657;28803;nc
+A;G001850;188;kathryn;elizabeth;hartley;26;f;w;hickory;mountain oak;298;28601;nc
+A;G005128;189;laurie;;halley;52;f;w;monroe;pumpernickel;6125;28110;ca
+A;G006178;190;kenneth;stephen;hopkins;29;m;w;king;natalie;212;27021;nc
+A;G000276;191;sylvia;dove;liner;65;f;w;carolina shores;sunfield;14;28467;nc
+A;G001475;192;alan;spencer;hill;28;m;w;newport;roberts;688;28570;nc
+A;G000846;193;billy;r;carter;78;m;w;asheville;white ash;118;28803;nc
+A;G004937;194;jonathan;scott;whitaker;34;m;w;asheboro;filler rd;1346;27205;nc
+A;G005746;195;robin;martin;pate;62;f;w;zebulon;car kare;9505;27597;ca
+A;G005634;196;nicole;darlene;bono;36;f;w;maple hill;nc hwy 50;7075;28454;ny
+A;G004192;197;barbara;perry;gutierrez;79;f;w;wake forest;registry;705;27587;nc
+A;G003592;198;howard;monroe;bost;53;m;w;winston salem;murray;5710;27106;nc
+A;G004047;199;karen;ann;nattinger;52;f;w;mooresville;castles gate;272;28117;tx
+A;G000483;200;douglas;scott;west;61;m;w;fletcher;sterling run;31;28732;
+A;G004051;201;kyle;lang;houston;28;m;w;statesville;davie;406;28677;nc
+A;G005740;202;michael;foley;askew;25;m;w;chapel hill;williamson;510;27514;nc
+A;G002752;203;marcella;elisa;caudill;26;f;m;wilmington;market;420;28401;va
+A;G004389;204;fleming;cecil;jones;46;m;w;trenton;chinquapin chapel;1523;28585;nc
+A;G000772;205;laura;venning;wilson;38;f;w;asheville;alexander;10;28801;nc
+A;G000274;206;eleanor;marie;sullivan;68;f;w;caswell beach;fairway;19;28465;ny
+A;G005610;207;mary;kate;haren;23;f;w;swansboro;camp queen;154;28584;ny
+A;G001594;208;mary;bryant;harwell;35;f;w;claremont;hall dairy;4440;28610;nc
+A;G004412;209;adrienne;leigh;hildreth;45;f;w;sanford;seth;3233;27330;nc
+A;G002079;210;william;h;berkey;35;u;u;vanceboro;nc 118;2860;28586;mi
+A;G000895;211;glenn;scott;colwell;47;m;w;conover;31st st;1223;28613;pa
+A;G003534;212;cristina;nicole;dalton;37;f;b;raleigh;calvary;3123;27604;nc
+A;G001308;213;andre;len;cottrell;52;u;u;kannapolis;29th;109;28083;
+A;G004683;214;walid;;yussuf;36;m;b;charlotte;eastfield village;13305;28269;
+A;G002198;215;patrick;joseph;martin;22;m;w;cameron;atlantic coast;19;28326;pa
+A;G000753;216;christopher;douglas;webster;44;m;w;weaverville;sherwood;115;28787;nc
+A;G004556;217;laura;jean;schrader;36;f;w;denver;stonesthrow;4600;28037;il
+A;G000883;218;joshua;william;kincaid;40;m;w;morganton;rhyne;110;28655;nc
+A;G006191;219;mary;elizabeth;whittington;40;f;w;pilot mountain;arthur needham;295;27041;nc
+A;G004486;220;breiyanna;joan;stevermer;23;f;w;stanley;ivey meadow;7779;28164;ia
+A;G001047;221;judith;ann;small;48;u;u;concord;bartram;776;28025;
+A;G002305;222;adrienne;graye;ezzell;31;f;w;fayetteville;ramsey;5400;28311;nc
+A;G004023;223;amy;leigh;galliher;48;f;w;statesville;creekside;151;28625;nc
+A;G003403;224;eddie;a;roach;57;m;b;greenville;clairmont;320;27834;nc
+A;G004041;225;stephen;thomas;cline;42;m;w;kannapolis;jaybird;1216;28081;nc
+A;G005549;226;andrew;james;cooke;23;m;w;raleigh;fig vine;411;27609;oc
+A;G001324;227;hollie;roper;smith;41;f;w;mooresville;lamplighter;111;28115;nc
+A;G005621;228;kassondra;nickole;scheidt;28;f;w;greenville;josh;1101;27834;nm
+A;G002775;229;samuel;louis;petro;64;m;w;winston salem;fishel;124;27107;oc
+A;G002901;230;brandon;mon a;james;33;m;b;durham;carroll;720;27701;nc
+A;G005372;231;lori;beth;davis;35;f;w;rocky mount;dortches;5998;27804;nc
+A;G005932;232;harry;neil;thompson;77;m;w;sims;crushed stone;7067;27880;nc
+A;G004171;233;brittney;rye;walker;31;f;w;raleigh;river landings;6017;27604;wv
+A;G004491;234;maribeth;dobbins;hughes;46;f;w;cornelius;chandlers landing;19225;28031;ct
+A;G000611;235;fiora;lynne;lizak;62;f;w;swannanoa;rainbow ridge;55;28778;nc
+A;G002035;236;jason;alexander;hancock;32;m;o;new bern;arbor green;4012;28562;va
+A;G005858;237;felicia;denise;cherry dixon;46;f;b;farmville;ghost hollow;3686;27828;nc
+A;G000133;238;ashley;marie;bishop;31;f;w;burlington;roslyn;1400;27215;nc
+A;G002290;239;april;mcgirt;henderson;39;f;b;st pauls;danbury;168;28384;nc
+A;G005562;240;timothy;keith;raab;35;m;w;apex;chatham;315;27502;az
+A;G001358;241;jarrett;william;bradley;78;m;i;hudson;mac;3005;28638;nc
+A;G001803;242;dana;petty;sheffield;34;f;w;asheboro;friendly acres;640;27205;nc
+A;G005358;243;rodell;austin;spake;53;m;w;rocky mount;tyson;106;27804;ak
+A;G000037;244;darryl;raynard;moye;53;m;b;mebane;dogwood;1007;27302;nc
+A;G000316;245;sarah;beth;tomlinson;34;f;w;kings mountain;oriental;104;28086;ms
+A;G002076;246;leander;;forbes;71;m;b;new bern;timothy;201;28560;nc
+A;G006359;247;jaeyeon;;kim;35;f;o;raleigh;calliope;2820;27616;oc
+A;G005387;248;ashley;ann;atkinson;33;f;w;rocky mount;avent;527;27804;ny
+A;G005301;249;beverly;zhalontay;butler;40;f;b;rockwell;west park;640;28138;nc
+A;G006269;250;marie;diane;hilliard;61;f;w;henderson;cooper;613;27536;
+A;G000866;251;gregory;price;benton;57;m;w;asheville;windswept;405;28801;ga
+A;G001120;252;donophan;;clyburn;67;m;b;concord;helmsley;3100;28027;
+A;G002048;253;courtney;l;cooper;22;u;b;new bern;morton;5309;28562;
+A;G005804;254;danielle;nicole;green;32;f;b;raleigh;rockglen;6721;27615;nc
+A;G005040;255;adam;c;allen;32;m;w;mooresboro;kanipe ranch;262;28114;tx
+A;G004373;256;christian;e;banks;52;m;b;turkey;beulah church;2386;28393;
+A;G006572;257;paul;eugene;artis;36;m;b;raleigh;lee;222;27601;nc
+A;G005651;258;kristopher;brian;smith;43;m;w;mebane;high ridge;1323;27302;nc
+A;G001585;259;norma;lee;wright;66;f;w;elk park;jones;140;28622;nc
+A;G004298;260;esthephanie;;chavira;22;f;o;clinton;beulah;4044;28328;nc
+A;G005807;261;kirk;j;cepavicius;46;m;o;elizabeth city;timothy;504;27909;ca
+A;G000935;262;brittany;marie;hamilton;28;f;w;morganton;sequoyah;200;28655;fl
+A;G003019;263;angelica;jeannette;glover;27;f;b;raleigh;atlantic;3424;27604;nc
+A;G004080;264;jacob;chase;chandler;26;m;w;statesville;myrtle;122;28625;nc
+A;G003904;265;dorothy;cagle;carmean;77;f;w;rocky mount;brandywine;1113;27804;
+A;G004600;266;danny;billy poe;jones;62;m;w;nebo;harmony grove;6988;28761;sc
+A;G006556;267;manaka;angela;green;23;u;u;raleigh;ncsu alexander;0;27607;oc
+A;G006236;268;laura;marie;sager;32;f;w;waxhaw;briarstone;8806;28173;oh
+A;G005552;269;jeffrey;scott;lyle;58;u;u;wilmington;davie;404;28412;
+A;G001248;270;daniel;robert;fellenzer;21;m;w;concord;dunberry;4606;28027;oc
+A;G004635;271;bruce;scott;perkins;53;m;w;charlotte;ginovanni;13023;28227;in
+A;G002594;272;charles;hobart allan;lance;50;m;w;trinity;wood village;3696;27370;nc
+A;G005061;273;michael;richard;krasuski;19;m;w;davidson;ridge;209;28035;nc
+A;G005814;274;michael;john;terry;34;m;w;randleman;branson davis;6339;27317;
+A;G002550;275;kirby;wayne;garner;52;m;w;thomasville;lacy hepler;1320;27360;nc
+A;G006220;276;garry;steven;cardwell;71;m;w;plymouth;hazel;112;27962;nc
+A;G003658;277;donald;carl;stogner;56;m;w;cary;giverny;302;27513;al
+A;G000727;278;michael;james;brasunas;37;u;u;asheville;first;49;28803;
+A;G003715;279;melvyn;james;austin;70;u;u;statesville;catspaw;520;28677;
+A;G003099;280;sabonia;nicole;stewart;44;f;b;rocky mount;leggett;1301;27801;nc
+A;G005729;281;michael;stevenson;mcglinchey;41;m;w;mebane;pink dogwood;313;27302;md
+A;G000646;282;david;patrick;conley;39;m;w;asheville;river ridge;2204;28803;ny
+A;G000655;283;lyudmila;anatolyevna;tirgoala;28;f;o;asheville;moss pink;2;28806;oc
+A;G003033;284;john;serge;taylor;73;m;w;chapel hill;lancaster;300;27517;ny
+A;G003068;285;jerome;mcarther;scott;22;m;b;durham;fayetteville;1801;27707;ny
+A;G002925;286;julie;marie;lowe;37;f;w;morrisville;wind river;1200;27560;la
+A;G000744;287;jacob;james;mcmahan;20;m;w;mars hill;honey;92;28754;nc
+A;G004749;288;goldee;marquie;payton;40;f;w;matthews;delamere;3103;28104;co
+A;G001640;289;david;michael;boldon;41;m;w;marion;clear creek;1179;28752;nc
+A;G001970;290;shannon;rose;king fowler;44;f;w;delco;applewhite;26;28436;nc
+A;G004731;291;leslie;brafford;threatt;57;f;w;charlotte;peverell;2618;28270;
+A;G004555;292;nicholas;david;reid;31;m;w;denver;nautical view;7693;28037;
+A;G005792;293;cecil;verlin;cherry;76;m;w;washington;voice of america;5108;27889;nc
+A;G004161;294;felicia;michele;boyette;42;f;w;clayton;gracie;131;27520;nc
+A;G004321;295;teona;michelle;bannerman;20;u;u;raleigh;lake ridge;4270;27604;
+A;G002014;296;william;andrew;gower;68;m;w;new bern;rivertide;128;28562;nc
+A;G004622;297;czarina;geneva;moore;31;f;b;charlotte;beatties ford;100;28216;nc
+A;G002384;298;aracelis;;pabon ramos;44;f;o;fort bragg;martin;131;28307;pr
+A;G006151;299;george;nathan;lee;56;m;w;dunn;stone place;60;28334;nc
+A;G003632;300;ashley;v;clark;39;f;w;winston salem;dewsbury;3707;27104;nc
+A;G003631;301;shakela;taquana;simmons;27;f;b;winston salem;glendare;320;27104;nc
+A;G006183;302;kelly;erin;graham;32;f;u;king;maple;138;27021;
+A;G004452;303;shaquana;teresa;delesbore;25;f;m;kinston;howard;1311;28501;
+A;G000237;304;laura;lynn;cramer;63;f;w;mebane;carden place;141;27302;mi
+A;G006169;305;curt;taylor;suneson;27;m;w;richfield;high rock;48400;28137;mn
+A;G005750;306;richard;;cushing;71;m;w;oriental;whittaker point;415;28571;mi
+A;G002767;307;huldah;norma jo;johnson;44;f;w;mocksville;stone wood;148;27028;nc
+A;G002295;308;jason;paul;dellarusso;39;m;w;hope mills;maidstone;5915;28348;nc
+A;G004856;309;george;a;medina;60;m;w;charlotte;long creek;341;28214;oh
+A;G002794;310;william;hampton;andrews;33;m;w;advance;kingsmill;415;27006;al
+A;G006062;311;deborah;adams;blackwell;61;f;b;reidsville;stewart store;293;27320;va
+A;G001903;312;danny;allen;eaker;49;m;w;cherryville;north shore;170;28021;nc
+A;G006616;313;linda;watson;miller;66;f;w;macon;davis dead end;236;27551;id
+A;G005775;314;paul;wendell;mickler;76;m;w;belhaven;water;100;27810;ga
+A;G004356;315;sergio;;chavez;26;m;o;angier;happy trails;149;27501;ca
+A;G006410;316;dene;rogier;perry;49;f;w;wendell;commander;105;27591;sc
+A;G005116;317;jamie;lee;mccoy;37;m;w;charlotte;hawk roost;11408;28214;ky
+A;G004784;318;john;harold;wilkes;45;m;w;charlotte;whitlock crossing;11171;28273;sc
+A;G002670;319;terry;demetrius;russell;39;m;b;lexington;wintergreen;130;27295;ga
+A;G005714;320;derek;john;holmgren;33;m;w;carrboro;eugene;108;27510;co
+A;G002210;321;venus;contesia;hamilton;45;f;b;fayetteville;flintcastle;4712;28314;
+A;G006681;322;jared;blake;williamson;33;m;w;walstonburg;nc hwy 91;7319;27888;nc
+A;G005964;323;stefanie;jenkins;thomas;36;f;w;pleasant garden;fred east;6019;27313;nc
+A;G002366;324;monica;maria;taveras;40;f;o;fayetteville;rim;808;28314;oc
+A;G000367;325;amy;lynn;boltz;34;f;w;bolivia;breezewood;797;28422;nc
+A;G003408;326;arnetrius;;applewhite;41;f;b;rocky mount;farmington;1705;27801;nc
+A;G004983;327;tameisha;yvette;bell;44;f;b;charlotte;hackberry grove;4650;28269;co
+A;G006625;328;robert;curtis;rein;28;m;w;boone;mary jean;127;28607;nc
+A;G004780;329;marty;b;scott;62;m;w;charlotte;summerpond;5425;28226;ky
+A;G000819;330;natalie;dawn;wise;32;f;w;asheville;stratford;412;28804;nc
+A;G004097;331;brenda;carolynn;carroll;73;f;w;stony point;june bug;183;28678;nc
+A;G003674;332;james;raeford;parrish;79;m;w;winston salem;brockton;1535;27106;nc
+A;G002135;333;rodric;earl;drake;49;m;w;spring lake;pine knoll;1151;28390;wi
+A;G003576;334;situ;;shrestha;34;f;o;winston salem;first;614;27101;oc
+A;G001002;335;jennifer;elaine;bullock;38;f;w;concord;dunberry;4613;28027;ny
+A;G001002;336;jennifer;elaine;bullock;38;f;w;charlotte;wingmont;7704;28269;ny
+A;G006413;337;kathryn;marie;meyer;43;f;w;raleigh;astro;3412;27604;nj
+A;G006413;338;kathryn;m;conlin;43;f;w;raleigh;plainview;210;27604;nj
+A;G004864;339;daniel;sebastian;huffenus;54;m;u;charlotte;clavemorr glenn;8717;28226;nj
+A;G004864;340;daniel;sebastian;huffenus;54;m;w;waxhaw;iverson;1921;28173;nj
+A;G003763;341;emily;anne;woodrum;33;f;w;angier;james norris;1143;27501;nc
+A;G003763;342;emily;anne;woodrum;33;f;w;greenville;brownlea;117;27858;
+A;G004972;343;sherri;belles;yager;49;f;w;charlotte;mahonia;10317;28277;pa
+A;G004972;344;sherri;belles;yager;49;f;w;waxhaw;summit view;1905;28173;pa
+A;G004823;345;melissa;leigh;brown;39;f;w;matthews;cedar chase;2813;28105;
+A;G004823;346;melissa;leigh;brown;39;f;w;matthews;matthews commons;915;28105;nc
+A;G004642;347;olga;julia;cortez;33;f;u;charlotte;silverberry;1621;28214;ny
+A;G004642;348;olga;julia;goodman;33;f;u;charlotte;knights bridge;8346;28210;ny
+A;G000519;349;gay;ray;huff;80;f;w;leicester;green valley;367;28748;nc
+A;G000519;350;elsie;ray;huff;80;f;w;leicester;green valley;367;28748;
+A;G000673;351;jamie;leanne;gosey;24;f;w;fairview;cane creek;47;28730;nc
+A;G000673;352;jamie;leanne;gosey;24;f;w;mooresboro;lake;223;28114;nc
+A;G000709;353;joseph;;scheliga;66;m;w;garner;pisgah;104;27529;ny
+A;G000709;354;joseph;;scheliga;66;m;w;hampstead;topsail greens;127;28443;ny
+A;G001449;355;charlza;lynn;babcock;71;f;w;newport;chatham;154;28570;la
+A;G001449;356;charlza;lynn;babcock;71;f;w;waynesville;crawford;410;28785;la
+A;G003838;357;weaver;ballou;haney;53;m;w;canton;cruso;14374;28716;nc
+A;G003838;358;weaver;ballou;haney;53;m;w;raleigh;ligon;2921;27607;nc
+A;G002403;359;johnathan;blair;ledford;31;u;u;fayetteville;pepperwood;947;28311;
+A;G002403;360;johnathan;blair;ledford;31;m;w;boone;glendamere;118;28607;nc
+A;G006447;361;kevin;m;joesph;41;m;b;raleigh;elizabeth bennet;8823;27616;oc
+A;G006447;362;kevin;m;joseph;41;m;b;raleigh;elizabeth bennet;8823;27616;la
+A;G002599;363;victoria;;chappell;26;f;w;lexington;forest hill;24;27295;
+A;G002599;364;victoria;lynn;chappell;26;f;w;archdale;brookwood;1507;27263;
+A;G004613;365;candace;ann;solomon;50;f;w;banner elk;sugar top;303;28604;nc
+A;G004613;366;candace;ann;solomon;50;f;w;banner elk;shawnee;2711;28604;nc
+A;G005855;367;brigid;matheson;o boyle;29;f;w;greenville;bostic;3960;27834;nc
+A;G005855;368;brigid;matheson;oboyle;29;f;w;raleigh;morgans;8508;27613;nc
+A;G005178;369;ginny;johnson;lewis;27;f;w;charlotte;saxonbury;4326;28269;nc
+A;G005178;370;ginny;johnson;lewis;27;f;w;asheboro;westmont;749;27205;nc
+A;G003521;371;robert;kevin;owens;26;m;w;wilmington;greens ferry;4211;28409;nc
+A;G003521;372;robert;kevin;owens;26;m;w;greenville;cedar creek;2913;27834;nc
+A;G003882;373;michelle;ann;terenzi;27;f;w;fletcher;stoney brook;51;28732;
+A;G003882;374;michelle;ann;terenzi;27;f;w;boone;king;229;28607;fl
+A;G001105;375;joshua;darren;sanders;30;m;w;kannapolis;longview;922;28081;nc
+A;G001105;376;joshua;darren;sanders;30;m;w;kannapolis;westen acres;260;28081;nc
+A;G003773;377;andrew;james;rubley;30;m;w;angier;nicholas;87;27501;in
+A;G003773;378;andrew;james;rubley;30;m;w;cary;forest wind;527;27513;in
+A;G001045;379;rasheika;sade;oneal;28;f;b;huntersville;dry stone;10813;28078;nc
+A;G001045;380;rasheika;sade;o neal;28;f;b;concord;carrie;218;28027;nc
+A;G004118;381;jeffrey;vincent;cox;37;m;w;fleetwood;sunnyview;441;28626;fl
+A;G004118;382;jeffery;v;cox;37;m;w;boone;green field;185;28607;fl
+A;G004681;383;arsena;stephanie;schroeder;27;f;b;charlotte;craighead;433;28206;pa
+A;G004681;384;arsena;stephanie;schroeder;27;f;b;charlotte;craighead;433;28206;
+A;G004482;385;joseph;cameron;justice;31;m;w;wake forest;durham;801;27587;va
+A;G004482;386;joseph;cameron;justice;31;m;w;raleigh;springfield creek;4205;27616;va
+A;G004787;387;heather;gragnani;wheatley;40;f;w;charlotte;ross moore;236;28205;va
+A;G004787;388;heather;marie;hipple;40;f;w;waxhaw;glynwater;1107;28173;
+A;G003719;389;william;ryan;boone;39;m;w;smithfield;tralee;642;27577;nc
+A;G003719;390;william;ryan;boone;39;m;w;garner;benson;4401;27529;nc
+A;G005760;391;melvin;randy;sawyer;28;m;w;washington;blake;473;27889;nc
+A;G005760;392;melvin;randy;sawyer;28;m;w;washington;rivercreek;5505;27889;nc
+A;G003944;393;justin;kyle;gibbs;28;m;w;fairfield;north lake;7334;27826;nc
+A;G003944;394;justin;kyle;gibbs;28;m;w;greenville;5th;2901;27858;nc
+A;G001411;395;cameron;shanne;thompson;31;m;w;newport;venice;170;28570;nc
+A;G001411;396;cameron;shanne;thompson;31;m;w;cedar point;vfw;194;28584;nc
+A;G003090;397;tremaine;jerome;baker;34;m;b;morrisville;keystone park;705;27560;nc
+A;G003090;398;tremaine;jerome;monk;34;m;b;raleigh;western;2717;27606;nc
+A;G005006;399;rene;;couret;39;f;m;charlotte;southwest;3112;28216;ca
+A;G005006;400;rene;elaine;couret;39;f;o;raleigh;hills;6204;27609;ca
+A;G001777;401;john;reeves;carpenter;38;m;w;lincolnton;springs;999;28092;nc
+A;G001777;402;john;reeves;carpenter;38;m;w;cary;hindsight;15211;27519;nc
+A;G002830;403;patricia;packer;frazier;72;f;w;wallace;rockfish court;114;28466;nc
+A;G002830;404;patricia;aacker;conway;72;f;w;rocky point;arlington;196;28457;nc
+A;G006040;405;anniatha;shepard;frazier;67;f;b;lumberton;parrot;91;28360;nc
+A;G006040;406;anniatha;s;frazier mcmillan;67;f;b;lumberton;parrot;91;28360;nc
+A;G000317;407;jahson;hashim ojore ro;jno baptiste;25;m;b;leland;gum branch;3970;28451;ma
+A;G000317;408;jahson;;jno baptiste;25;m;b;leland;gum branch;3970;28451;ma
+A;G001890;409;morgan;clay;morrison;30;f;w;fallston;ross;131;28042;nc
+A;G001890;410;morgan;clay;morrison;30;f;w;brevard;shepard;30;28712;nc
+A;G006506;411;elena;;kyriakoulis;25;f;w;raleigh;laurnet;10833;27614;vt
+A;G006506;412;elena;;kyriakoulis;25;f;u;boone;brown white dorm;140;28608;
+A;G005540;413;diretta;williams;robinson;62;f;b;hampstead;leeward;127;28443;nc
+A;G005540;414;diretta;williams;robinson;62;f;b;rocky point;harrison creek;1146;28457;
+A;G005443;415;patrick;carter;ledbetter;28;m;w;wilmington;ingleside;6246;28409;nc
+A;G005443;416;patrick;carter;ledbetter;28;m;w;wilmington;ingleside;6246;28409;nc
+A;G001963;417;santeidra;eunae;bland;34;f;b;bolton;sam potts;15133;28423;nc
+A;G001963;418;santeidra;eunae;bland cherry;34;f;b;riegelwood;canal;100;28456;nc
+A;G002714;419;steven;gale;godwin;34;m;w;pfafftown;bramblewood;1913;27040;nc
+A;G002714;420;steven;gale;godwin;34;m;w;dunn;prospect church;1866;28334;nc
+A;G000963;421;timothy;webb;davis;58;m;w;morganton;anderson;204;28655;nc
+A;G000963;422;timothy;webb;davis;58;m;w;ellenboro;hollis;1323;28040;nc
+A;G002881;423;garriel;kenneth;griffin;37;m;w;durham;ninth;1013;27705;wa
+A;G002881;424;gabriel;k;griffin;37;m;w;durham;hillsborough;2211;27705;wa
+A;G003478;425;shanesha;denise;walker;25;f;m;winston salem;granite;1622;27107;nc
+A;G003478;426;shanesha;denise;walker;25;f;b;walnut cove;aspen hill;1025;27052;nc
+A;G001202;427;julie;shawn;milligan;44;f;w;davidson;traders;10846;28036;ma
+A;G001202;428;julie;shawn;milligan;44;f;w;hamptonville;overland;1014;27020;ma
+A;G003331;429;lisa;ann;pressley;51;f;w;morrisville;princess;206;27560;md
+A;G003331;430;lisa;ann;pressley;51;f;w;willow springs;silver stirrup;59;27592;md
+A;G005050;431;allison;jennifer;young;37;f;w;charlotte;aldershot;4100;28211;nc
+A;G005050;432;allison;jennifer;young;37;f;w;chapel hill;melanie;469;27514;nc
+A;G002333;433;philip;christopher;hall;47;m;w;dunn;newton grove;7541;28334;wv
+A;G002333;434;philip;christopher;hall;47;m;w;goldsboro;nc 111;3445;27534;wv
+A;G003694;435;benjamin;alexander;melton;30;m;w;tobaccoville;rolling view;6900;27050;nc
+A;G003694;436;benjamin;alexander;melton;30;m;w;king;conrad;213;27021;nc
+A;G005131;437;shamarion;drummer;attaway;29;f;b;charlotte;killarney;2106;28262;nc
+A;G005131;438;shamarion;drummer;attaway;29;f;b;salisbury;henderlite;219;28144;nc
+A;G003499;439;stacy;michelle;mccuen;39;f;w;winston salem;country club;4755;27104;nc
+A;G003499;440;stacy;michelle;mccuen;39;f;w;charlotte;meadow lakes;8337;28210;nc
+A;G005753;441;donald;earl;smith;59;m;w;hampstead;bishop;625;28443;nc
+A;G005753;442;donald;e;smith;59;m;w;raleigh;rock quarry;5120;27610;nc
+A;G000546;443;jonathan;marshall;jones;35;m;w;asheville;kensington;2000;28803;nc
+A;G000546;444;jonathan;marshall;jones;35;m;w;hendersonville;rugby hollow;161;28791;nc
+A;G000424;445;katherine;dare;harrison;55;f;w;oak island;trott;313;28465;nc
+A;G000424;446;katherine;dare;harrison;55;f;w;wilmington;croquet;2555;28412;nc
+A;G004219;447;michelle;williams;wallace;48;f;b;selma;brentwood;51;27576;nj
+A;G004219;448;michelle;williams;wallace;48;f;b;garner;abberly crest;335;27529;nj
+A;G002828;449;daniel;alan;tyndall;40;m;w;mt olive;north duplin school;233;28365;nc
+A;G002828;450;daniel;alan;tyndall;40;m;w;wilmington;willoughby park;1410;28412;nc
+A;G002276;451;thomas;warren;baker;68;m;w;fayetteville;dunn;2224;28312;nc
+A;G002276;452;thomas;warren;baker;68;m;w;white lake;pine cove;89;28337;nc
+A;G002958;453;jessica;thompson;orr;39;f;w;seven lakes;seminole;122;27376;nc
+A;G002958;454;jessica;ruth;thompson;39;f;w;raleigh;sunny corners;2710;27614;nc
+A;G002904;455;naisha;dimples;mcmillan;23;f;b;durham;pritchard;1801;27707;nc
+A;G002904;456;naisha;d;mcmillan;23;f;b;durham;broad;2112;27705;nc
+A;G001089;457;christopher;stephen;crutchfield;40;m;w;sherrills ford;roundstone;1405;28673;ny
+A;G001089;458;christopher;stephen;crutchfield;40;m;w;charlotte;old concord;9405;28213;ny
+A;G005314;459;deirdre;a;donoghue;55;f;w;raleigh;cart track;7712;27615;ny
+A;G005314;460;deirdre;a;donoghue;55;f;w;raleigh;cart track;7712;27615;ny
+A;G003517;461;trevia;michelle;brim;42;f;b;winston salem;vista;350;27106;nc
+A;G003517;462;trevia;michelle;brim;42;f;b;eden;chestnut;115;27288;nc
+A;G003031;463;danny;christopher;hill;59;m;w;timberlake;derwin;173;27583;nc
+A;G003031;464;danny;christopher;hill;59;m;w;raleigh;tetbury;4504;27613;nc
+A;G003391;465;donnell;ward;sedgwick;62;m;b;rocky mount;charity;106;27801;va
+A;G003391;466;donnell;ward;sedgwick;62;m;b;rocky mount;woods walk;3036;27804;va
+A;G000388;467;jimmy;lewis;tatum;46;m;w;fayetteville;camden;3858;28306;nc
+A;G000388;468;jimmy;lewis;tatum;46;m;w;albemarle;thompson;24912;28001;nc
+A;G004576;469;ebonie;markeeta;brown;31;f;b;williamston;carolina pines;103;27892;nc
+A;G004576;470;ebonie;;murphy;31;f;b;greenville;brook creek;4120;27858;
+A;G001238;471;megan;rhoda;hughes allison;46;f;b;concord;mill wright;2601;28027;ks
+A;G001238;472;megan;rhoda;hughes;46;f;b;charlotte;m;423;28204;ks
+A;G001755;473;debra;ann;lefton;50;f;w;clayton;wyndfall;234;27527;ny
+A;G001755;474;debra;ann;lefton;50;f;w;raleigh;ladys slipper;1100;27606;ny
+A;G001479;475;jeremiah;daniel;bunting;31;m;w;peletier;peletier loop;550;28584;va
+A;G001479;476;jeremiah;daniel;bunting;31;m;w;havelock;china;109;28532;va
+A;G002347;477;mathew;loyal;fitch;49;m;w;hope mills;rossendale;404;28348;ca
+A;G002347;478;mathew;loyal;fitch;49;m;w;charlotte;tunston;6429;28269;ca
+A;G001979;479;eric;hubert;jenkins;44;m;w;whiteville;hallsboro;8363;28472;nc
+A;G001979;480;eric;hubert;jenkins;44;m;w;whiteville;washington;715;28472;nc
+A;G002072;481;lloyd;sterling;bennett;59;m;w;new bern;us 17;2958;28560;nc
+A;G002072;482;lloyd;sterling;bennett;59;m;w;trenton;oak grove;1344;28585;nc
+A;G005474;483;rhonda;yvonne;vega;57;f;w;wilmington;hooker;206;28403;oc
+A;G005474;484;rhonda;yvonne;vega;57;f;w;holly springs;goosehaven;4505;27540;oc
+A;G000423;485;nancy;r;padgett;76;f;w;carolina shores;sunfield;14;28467;nc
+A;G000423;486;nancy;r;padgett;76;f;w;carolina beach;rocky mount;805;28428;nc
+A;G001150;487;otis;john;huntley;26;m;b;concord;amber;309;28025;ny
+A;G001150;488;otis;john;huntley;26;m;b;carthage;needmore;395;28327;ny
+A;G002967;489;kylie;edwards;harris;44;f;w;chapel hill;beecham;1480;27517;nc
+A;G002967;490;kylie;edwards;harris;44;f;w;chapel hill;kenmore;729;27514;nc
+A;G000239;491;nancy;anne;depalma;57;f;w;mebane;fifth;505;27302;ny
+A;G000239;492;nancy;anne;depalma;57;f;w;reidsville;madison;448;27320;ny
+A;G005539;493;john;albert;temple;44;m;w;hampstead;highlands;346;28443;nj
+A;G005539;494;john;albert;temple;44;m;w;rocky point;mississippi;215;28457;nj
+A;G002986;495;juan;carlos;verdin;39;m;u;durham;shiley;1319;27704;
+A;G002986;496;juan;carlos;verdin;39;m;w;durham;bainbridge;2900;27713;in
+A;G001879;497;e;steve;smith;72;m;w;mooresboro;mckinney;3520;28114;nc
+A;G001879;498;ernest;steve;smith;72;m;w;mooresboro;mckinney;3520;28114;nc
+A;G004497;499;wayne;edward;young;60;m;w;vale;bill ledford;6320;28168;nc
+A;G004497;500;wayne;edward;young;60;m;w;cornelius;grenache;17100;28031;nc
+A;G003289;501;matthew;robert;strickland;33;m;w;durham;moorefield;9;27705;mi
+A;G003289;502;matthew;robert;strickland;33;m;w;fuquay varina;devonridge;1911;27526;mo
+A;G005892;503;irene;gillian;bauer;21;f;w;greenville;jones hall;460;27858;
+A;G005892;504;irene;gillian;bauer;21;f;w;knightdale;wellington;109;27545;
+A;G002105;505;james;christopher;wright;34;m;w;new bern;bayberry park;5308;28562;il
+A;G002105;506;james;christopher;wright;34;m;w;richlands;gum branch;6766;28574;il
+A;G005380;507;eric;johnson;batchelor;51;m;w;rocky mount;waterloo;1248;27804;nc
+A;G005380;508;eric;johnson;batchelor;51;m;w;zebulon;church;811;27597;nc
+A;G005252;509;marvin;lee;bennett;64;m;a;mt gilead;larboard;126;27306;nc
+A;G005252;510;marvin;lee;bennett;64;m;i;raleigh;new bern;1901;27610;
+A;G004185;511;richard;allen;hodges;39;m;b;kinston;fox run;3118;28504;nc
+A;G004185;512;richard;allen;hodges;39;m;b;winterville;vicksburg;1029;28590;
+A;G001291;513;angela;plyler;talley;48;f;w;midland;clydesdale;12856;28107;nc
+A;G001291;514;angela;plyler;talley;48;f;w;oakboro;st martin;12792;28129;nc
+A;G000927;515;merrick;duane;smith;48;m;b;winston salem;brownsboro;4217;27106;nc
+A;G000927;516;merrick;duane;smith;48;m;b;wilson;wembly;3407;27896;nc
+A;G000385;517;jarrod;;richardson;30;m;w;caswell beach;caswell beach;1000;28465;
+A;G000385;518;jarrod;hoke;richardson;30;m;w;charlotte;mary alexander;9824;28262;nc
+A;G005218;519;elisabeth;forrest;ward;29;f;w;wilmington;reed;4317;28405;
+A;G005218;520;elisabeth;forrest;ward;29;f;w;wilmington;reed;4317;28405;nc
+A;G000837;521;britney;acosta;clubb;28;u;u;asheville;sydney;16;28806;
+A;G000837;522;britney;lynn;acosta;28;f;w;sapphire;carefree;59;28774;fl
+A;G001342;523;lawrence;eugene;laws;40;f;w;hickory;gold creek bay;5669;28601;nc
+A;G001342;524;lawrence;eugene;laws;40;u;u;hickory;7th;412;28601;
+A;G000616;525;lance;armstrong;wisely;44;m;w;marshall;foster creek;411;28753;fl
+A;G000616;526;lance;armstrong;wisely;44;m;w;garner;rose common;108;27529;fl
+A;G002320;527;cindy;kay;hickox;41;f;w;fort bragg;cargomaster;59;28307;nc
+A;G002320;528;cindy;kay;hickox;41;f;w;randleman;caudle;613;27317;nc
+A;G003247;529;william;rudolph;garfield;61;m;w;durham;sherbon;3204;27707;oh
+A;G003247;530;william;rudolph;garfield;61;m;w;wilmington;channel haven;115;28409;oh
+A;G003454;531;johnnie;earl;lucas;54;m;b;rocky mount;eastern;927;27801;nc
+A;G003454;532;johnnie;earl;lucas;118;m;b;spring hope;bergeron;2875;27882;
+A;G005331;533;margaret;brittany;stone pruitt;32;f;w;wilson;nc 97;1132;27896;
+A;G005331;534;margaret;brittany;stone pruitt;32;f;w;greenville;ellsworth;3357;27834;nc
+A;G005331;535;margaret;brittany;stone pruitt;32;f;w;greenville;ellsworth;3357;27834;nc
+A;G002668;536;lisa;barefoot;gobble;56;f;w;high point;glyn water;1047;27265;
+A;G002668;537;lisa;barefoot;gobble;56;f;w;winston salem;west;941;27101;nc
+A;G002668;538;lisa;barefoot;gobble;56;f;w;kernersville;timber ridge;472;27284;nc
+A;G000464;539;hannah;elizabeth;levin;40;f;w;burnsville;ams;60;28714;nc
+A;G000464;540;hannah;elizabeth;levin;40;f;w;sylva;perley hyatt;324;28779;nc
+A;G000464;541;hannah;elizabeth;levin;40;f;w;pisgah forest;hart;43;28768;nc
+A;G000096;542;whitney;ellen;baker;29;f;w;durham;trinity;214;27701;in
+A;G000096;543;whitney;ellen;baker;29;f;w;carrboro;poplar;400;27510;in
+A;G000096;544;whitney;ellen;baker;29;f;w;carrboro;greensboro;506;27510;in
+A;G004441;545;cynthia;gayle;eads;61;f;u;hillsborough;orange heights;425;27278;
+A;G004441;546;cynthia;gayle;eads;61;f;w;raleigh;fieldspring;190;27606;fl
+A;G004441;547;cynthia;gayle;eads;61;f;w;raleigh;new hope;4723;27604;fl
+A;G000949;548;kimberly;hayes;bennett;47;u;w;morganton;hopewell;994;28655;nc
+A;G000949;549;kimberly;hayes;bennett;47;f;w;nebo;cedar brook;55;28761;nc
+A;G000949;550;kimberly;dawn;hayes;47;f;w;nebo;cedar brook;55;28761;
+A;G005767;551;lauya;monique;boston;41;f;b;washington;baker;205;27889;nc
+A;G005767;552;lauya;monique;boston;41;f;b;washington;minuteman;200;27889;nc
+A;G005767;553;lauya;monique;boston;41;f;b;raleigh;tischer;1909;27603;nc
+A;G005767;554;lauya;monique;boston;41;f;b;garner;seventh;917;27529;nc

@@ -13,10 +13,13 @@ import java.util.stream.Collectors;
 import de.uni_leipzig.dbs.pprl.primat.common.extraction.FeatureExtractor;
 import de.uni_leipzig.dbs.pprl.primat.common.extraction.qgram.ConstantWeightTrigramExtractor;
 import de.uni_leipzig.dbs.pprl.primat.common.model.NamedRecordSchemaConfiguration;
+import de.uni_leipzig.dbs.pprl.primat.common.model.Party;
 import de.uni_leipzig.dbs.pprl.primat.common.model.Record;
 import de.uni_leipzig.dbs.pprl.primat.common.model.RecordSchemaConfiguration;
+import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.GlobalIdAttribute;
 import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.IdAttribute;
 import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.NonQidAttributeType;
+import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.PartyAttribute;
 import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.QidAttribute;
 import de.uni_leipzig.dbs.pprl.primat.common.model.attributes.QidAttributeType;
 import de.uni_leipzig.dbs.pprl.primat.common.utils.RandomFactory;
@@ -81,10 +84,14 @@ public class DataOwnerPipeline {
 		for (final ColumnConfig column : config.getColumns()) {
 			switch (column.getRole()) {
 				case PARTY:
-					builder.add(column.getIndex(), NonQidAttributeType.PARTY);
+					if (column.getIndex() != null) {
+						builder.add(column.getIndex(), NonQidAttributeType.PARTY);
+					}
 					break;
 				case GLOBAL_ID:
-					builder.add(column.getIndex(), NonQidAttributeType.GLOBAL_ID);
+					if (column.getIndex() != null) {
+						builder.add(column.getIndex(), NonQidAttributeType.GLOBAL_ID);
+					}
 					break;
 				case ID:
 					builder.add(column.getIndex(), NonQidAttributeType.ID);
@@ -229,6 +236,7 @@ public class DataOwnerPipeline {
 		final RecordSchemaConfiguration schema = buildSchema();
 		final List<Record> records = recordSource.readAll(schema);
 		prefixRecordIds(records);
+		applyConstantColumns(records);
 		if (config.isDebug()) {
 			printFirstRecords("estratti dalla sorgente dati", records);
 		}
@@ -252,6 +260,38 @@ public class DataOwnerPipeline {
 	private void prefixRecordIds(List<Record> records) {
 		for (final Record record : records) {
 			record.setIdAttribute(new IdAttribute(config.getParty() + record.getId()));
+		}
+	}
+
+	/**
+	 * Valorizza, su ogni record appena letto, le colonne PARTY/GLOBAL_ID "a
+	 * valore costante" (senza {@code index}, vedi {@link ColumnConfig#getConstantValue()}):
+	 * stesso valore ripetuto identico per ogni riga, mai letto dalla sorgente
+	 * dati. Per PARTY il default (quando {@code constantValue} e' omesso nel
+	 * JSON) e' {@link DataOwnerConfig#getParty()}, risolto qui in Java - non va
+	 * confuso con {@link #prefixRecordIds}, che usa lo stesso {@code config.getParty()}
+	 * ma per un campo completamente diverso ({@code Record.getId()}, non
+	 * {@code Record.getParty()}). Per GLOBAL_ID il default e' la stringa vuota
+	 * (caso d'uso: nessun Ground Truth disponibile in produzione).
+	 */
+	private void applyConstantColumns(List<Record> records) {
+		for (final ColumnConfig column : config.getColumns()) {
+			if (column.getIndex() != null) {
+				continue;
+			}
+			if (column.getRole() == ColumnRole.PARTY) {
+				final String value = column.getConstantValue() != null ? column.getConstantValue()
+						: config.getParty();
+				for (final Record record : records) {
+					record.setPartyAttribute(new PartyAttribute(new Party(value)));
+				}
+			}
+			else if (column.getRole() == ColumnRole.GLOBAL_ID) {
+				final String value = column.getConstantValue() != null ? column.getConstantValue() : "";
+				for (final Record record : records) {
+					record.setGlobalIdAttribute(new GlobalIdAttribute(value));
+				}
+			}
 		}
 	}
 

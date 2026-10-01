@@ -1,0 +1,24 @@
+{
+  "_comment": "Esempio di colonne PARTY/GLOBAL_ID 'a valore costante' (senza 'index'): utile quando il dataset del Data Owner non ha affatto una colonna associabile a PARTY (qui risolta da Java al valore del campo top-level 'party', nessuna duplicazione nel JSON), e/o quando non e' disponibile un Ground Truth (qui GLOBAL_ID valorizzato esplicitamente a stringa vuota per ogni record). 'constantValue' e' supportato solo per i ruoli PARTY/GLOBAL_ID; se omesso, PARTY usa 'party' e GLOBAL_ID usa \"\" come default.",
+  "party": "A",
+  "debug": true,
+  "mqttBrokerUrl": "tcp://localhost:1883",
+  "dataSource": {
+    "type": "CSV",
+    "csv": {
+      "delimiter": ";",
+      "filePath": "primat-examples/src/main/resources/synthetic_ncvr/party_A_clean.csv"
+    }
+  },
+  "bloomFilter": {
+    "length": 1024,
+    "hardening": { "type": "NONE" }
+  },
+  "columns": [
+    { "name": "PARTY", "role": "PARTY" },
+    { "name": "GLOBAL_ID", "role": "GLOBAL_ID", "constantValue": "" },
+    { "index": 2, "name": "ID", "role": "ID" },
+    { "index": 3, "name": "FN", "role": "QID", "preprocessing": [ {"type":"TRIM"}, {"type":"UPPERCASE"}, {"type":"REMOVE_ACCENTS"}, {"type":"REMOVE_SPECIAL_CHARS"}, {"type":"TRUNCATE","from":0,"to":20} ] },
+    { "index": 6, "name": "YOB", "role": "QID", "preprocessing": [ {"type":"TRIM"}, {"type":"REMOVE_NON_DIGITS"} ] }
+  ]
+}

@@ -5,6 +5,7 @@
 package de.uni_leipzig.dbs.pprl.primat.dataowner.service.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -314,6 +315,56 @@ class DataOwnerConfigLoaderTest {
 		final String json = VALID_JSON.replace(
 				"{ \"index\": 0, \"name\": \"PARTY\", \"role\": \"PARTY\" },", "");
 		final Path path = writeJson("no-party-role.json", json);
+
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+	}
+
+	@Test
+	void partyColumnWithoutIndexLoadsFineAndDefersToConfigPartyAtRuntime() throws Exception {
+		final String json = VALID_JSON.replace(
+				"{ \"index\": 0, \"name\": \"PARTY\", \"role\": \"PARTY\" },",
+				"{ \"name\": \"PARTY\", \"role\": \"PARTY\" },");
+		final Path path = writeJson("party-no-index.json", json);
+
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+
+		final ColumnConfig partyColumn = config.getColumns().stream()
+				.filter(c -> c.getRole() == ColumnRole.PARTY).findFirst().orElseThrow();
+		assertNull(partyColumn.getIndex());
+		assertNull(partyColumn.getConstantValue());
+	}
+
+	@Test
+	void globalIdColumnWithoutIndexLoadsFineAndDefersToEmptyStringAtRuntime() throws Exception {
+		final String json = VALID_JSON.replace(
+				"{ \"index\": 1, \"name\": \"GLOBAL_ID\", \"role\": \"GLOBAL_ID\" },",
+				"{ \"name\": \"GLOBAL_ID\", \"role\": \"GLOBAL_ID\" },");
+		final Path path = writeJson("global-id-no-index.json", json);
+
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(path);
+
+		final ColumnConfig globalIdColumn = config.getColumns().stream()
+				.filter(c -> c.getRole() == ColumnRole.GLOBAL_ID).findFirst().orElseThrow();
+		assertNull(globalIdColumn.getIndex());
+		assertNull(globalIdColumn.getConstantValue());
+	}
+
+	@Test
+	void idColumnWithoutIndexStillThrowsConfigException() throws Exception {
+		final String json = VALID_JSON.replace(
+				"{ \"index\": 2, \"name\": \"ID\", \"role\": \"ID\" },",
+				"{ \"name\": \"ID\", \"role\": \"ID\" },");
+		final Path path = writeJson("id-no-index.json", json);
+
+		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
+	}
+
+	@Test
+	void constantValueOnQidColumnThrowsConfigException() throws Exception {
+		final String json = VALID_JSON.replace(
+				"{ \"index\": 3, \"name\": \"FN\", \"role\": \"QID\", \"preprocessing\": " + PREP_TEXT + ", \"hashFunctions\": 12, \"salt\": \"FN_\" },",
+				"{ \"index\": 3, \"name\": \"FN\", \"role\": \"QID\", \"preprocessing\": " + PREP_TEXT + ", \"hashFunctions\": 12, \"salt\": \"FN_\", \"constantValue\": \"x\" },");
+		final Path path = writeJson("constant-value-on-qid.json", json);
 
 		assertThrows(DataOwnerConfigException.class, () -> DataOwnerConfigLoader.load(path));
 	}

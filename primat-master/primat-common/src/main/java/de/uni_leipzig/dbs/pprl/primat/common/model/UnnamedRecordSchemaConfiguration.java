@@ -92,12 +92,13 @@ public class UnnamedRecordSchemaConfiguration extends RecordSchemaConfiguration 
         	if (!this.nonQidAttrMap.containsValue(NonQidAttributeType.ID)) {
         		throw new RuntimeException("No ID attribute specified!");
         	}
-        	if (!this.nonQidAttrMap.containsValue(NonQidAttributeType.PARTY)) {
-        		throw new RuntimeException("No party attribute specified!");
-        	}
+        	// PARTY, come GLOBAL_ID, non e' piu' obbligatorio in schema: un caller
+        	// (es. DataOwnerPipeline) puo' valorizzare Record.setPartyAttribute(...)
+        	// con un valore costante dopo la lettura, senza che la sorgente dati
+        	// abbia una colonna fisica associabile a PARTY.
         	if (this.qidAttrMap.size() < 1) {
         		throw new RuntimeException("At least one qid attribute must be specified!");
-        	}	
+        	}
         }
 
         public UnnamedRecordSchemaConfiguration build() {

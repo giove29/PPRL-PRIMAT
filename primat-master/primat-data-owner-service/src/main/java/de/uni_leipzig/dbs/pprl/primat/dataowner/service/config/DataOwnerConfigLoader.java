@@ -180,13 +180,21 @@ public final class DataOwnerConfigLoader {
 			}
 			requireNonBlank(column.getName(), "columns[].name", jsonPath);
 
-			// 'index' e' obbligatorio per ogni ruolo tranne QID: una colonna QID senza
-			// index e' "virtuale", il suo valore lo calcola il primo step MERGE/SPLIT
-			// del proprio 'preprocessing' (vedi PreprocessingStepFactory), non e'
-			// letta fisicamente dalla sorgente dati.
-			if (column.getRole() != ColumnRole.QID && column.getIndex() == null) {
+			// 'index' e' obbligatorio per ogni ruolo tranne QID (virtuale, valore dal
+			// primo step MERGE/SPLIT del proprio 'preprocessing') e PARTY/GLOBAL_ID "a
+			// valore costante" (valore da 'constantValue', o da un default risolto in
+			// Java - vedi DataOwnerPipeline.applyConstantColumns): per questi ultimi due
+			// la colonna non e' letta fisicamente dalla sorgente dati.
+			final boolean indexOptional = column.getRole() == ColumnRole.QID || column.getRole() == ColumnRole.PARTY
+					|| column.getRole() == ColumnRole.GLOBAL_ID;
+			if (!indexOptional && column.getIndex() == null) {
 				throw new DataOwnerConfigException("Colonna '" + column.getName() + "' (role=" + column.getRole()
 						+ ") priva del campo 'index' obbligatorio in " + jsonPath);
+			}
+			if (column.getConstantValue() != null && column.getRole() != ColumnRole.PARTY
+					&& column.getRole() != ColumnRole.GLOBAL_ID) {
+				throw new DataOwnerConfigException("Colonna '" + column.getName() + "' (role=" + column.getRole()
+						+ ") non supporta 'constantValue' (solo PARTY/GLOBAL_ID) in " + jsonPath);
 			}
 			if (column.getIndex() != null) {
 				if (column.getIndex() < 0) {

@@ -11,3 +11,4 @@ pom.xml.versionsBackup
 *.log
 *.lck
 /.idea
+/ncvoters_naumann/raw/

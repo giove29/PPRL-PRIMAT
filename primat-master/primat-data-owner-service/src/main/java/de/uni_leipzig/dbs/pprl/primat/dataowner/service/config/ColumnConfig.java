@@ -37,13 +37,15 @@ public class ColumnConfig {
 	private String salt;
 	private ConstantWeightEncodingJsonConfig constantWeightEncoding;
 	private Integer missingValueTokenCount;
+	private String constantValue;
 
 	/**
 	 * @return la posizione fisica nella sorgente dati, o {@code null} per una
-	 *         colonna {@code QID} "virtuale" il cui valore e' calcolato dal
-	 *         primo step MERGE/SPLIT del proprio {@code preprocessing} (mai per
-	 *         {@code PARTY}/{@code ID}/{@code GLOBAL_ID}/{@code RAW}, sempre
-	 *         fisicamente lette).
+	 *         colonna {@code QID} "virtuale" (valore calcolato dal primo step
+	 *         MERGE/SPLIT del proprio {@code preprocessing}) oppure per una
+	 *         colonna {@code PARTY}/{@code GLOBAL_ID} "a valore costante" (vedi
+	 *         {@link #getConstantValue()} - mai per {@code ID}/{@code RAW},
+	 *         sempre fisicamente lette).
 	 */
 	public Integer getIndex() {
 		return index;
@@ -55,6 +57,17 @@ public class ColumnConfig {
 
 	public ColumnRole getRole() {
 		return role;
+	}
+
+	/**
+	 * @return il valore costante esplicitamente dichiarato nel JSON per una
+	 *         colonna {@code PARTY}/{@code GLOBAL_ID} senza {@code index}, o
+	 *         {@code null} se omesso (in tal caso il chiamante applica il
+	 *         proprio default: {@code DataOwnerConfig#getParty()} per PARTY,
+	 *         stringa vuota per GLOBAL_ID - vedi {@code DataOwnerPipeline}).
+	 */
+	public String getConstantValue() {
+		return constantValue;
 	}
 
 	/** @return la catena di preprocessing esplicita dichiarata nel JSON, o {@code null} se assente. */
