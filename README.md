@@ -1,4 +1,4 @@
-# PRIMATMS: Private Matching Toolbox for MicroServices
+# PRIMAT-MS: Private Matching Toolbox for MicroServices
 
 <img src="img/primatms_logo.png" width="250">
 
