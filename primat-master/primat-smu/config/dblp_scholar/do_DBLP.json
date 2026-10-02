@@ -1,5 +1,6 @@
 {
-  "_note": "Schema (mapping colonna->QID) del DO 'DBLP' - dataset dblp_scholar, party_DBLP_local.json/_live.json. Party dichiarata duplicateFree:true lato Linkage Unit (~97.9% pulita, convenzione di letteratura - vedi primat-examples/src/main/resources/dblp_scholar/SCHEMA.md). index/name/role/preprocessing: la catena di preprocessing e' esplicita qui; i parametri di encoding (hashFunctions/salt/CWE/missingValueTokenCount) vengono da encoding.json.",
+  "_note": "Schema (mapping colonna->QID) del DO 'DBLP' - dataset dblp_scholar, party_DBLP_local.json/_live.json. Party dichiarata duplicateFree:true (~97.9% pulita, convenzione di letteratura - vedi primat-examples/src/main/resources/dblp_scholar/SCHEMA.md) - letta dalla SMU e spinta alla Linkage Unit insieme a rbfSize prima di ogni run. index/name/role/preprocessing: la catena di preprocessing e' esplicita qui; i parametri di encoding (hashFunctions/salt/CWE/missingValueTokenCount) vengono da encoding.json.",
+  "duplicateFree": true,
   "columns": [
     { "index": 0, "name": "PARTY", "role": "PARTY" },
     { "index": 1, "name": "GLOBAL_ID", "role": "GLOBAL_ID" },

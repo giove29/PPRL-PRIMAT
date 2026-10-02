@@ -1,5 +1,6 @@
 {
-  "_note": "Schema (mapping colonna->QID) del DO 'B' - dataset ncvoters_naumann (NC Voters, HPI/Naumann), stesso schema per tutte le taglie 500/1000/2000/5000/full (party_B_local.json/_live.json). Party dichiarata duplicateFree:false lato Linkage Unit (duplicati interni confermati empiricamente sui CSV generati, meno frequenti che in A ma presenti). Stessi index/preprocessing di do_A.json: stesso dataset sorgente diviso in due file, stesso allineamento di schema.",
+  "_note": "Schema (mapping colonna->QID) del DO 'B' - dataset ncvoters_naumann (NC Voters, HPI/Naumann), stesso schema per tutte le taglie 500/1000/2000/5000/full (party_B_local.json/_live.json). Party dichiarata duplicateFree:false (duplicati interni confermati empiricamente sui CSV generati, meno frequenti che in A ma presenti) - letta dalla SMU e spinta alla Linkage Unit insieme a rbfSize prima di ogni run. Stessi index/preprocessing di do_A.json: stesso dataset sorgente diviso in due file, stesso allineamento di schema.",
+  "duplicateFree": false,
   "columns": [
     { "index": 0, "name": "PARTY", "role": "PARTY" },
     { "index": 1, "name": "GLOBAL_ID", "role": "GLOBAL_ID" },

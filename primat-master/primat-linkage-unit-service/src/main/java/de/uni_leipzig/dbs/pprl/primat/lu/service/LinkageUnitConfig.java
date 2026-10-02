@@ -28,7 +28,7 @@ import de.uni_leipzig.dbs.pprl.primat.lu.service.config.LinkageUnitConfigLoader;
  */
 public class LinkageUnitConfig {
 
-	private final List<Party> parties;
+	private List<Party> parties;
 	private final ClusteringMethod clusteringMethod;
 	private final SimilarityThresholdSpec thresholdSpec;
 	private int rbfSize;
@@ -105,6 +105,20 @@ public class LinkageUnitConfig {
 
 	public List<Party> getParties() {
 		return parties;
+	}
+
+	/**
+	 * Riconfigura a caldo il roster dei party (nomi + clean/dirty),
+	 * sostituendo l'intera lista per riferimento (mai una mutazione in-place,
+	 * cosi' un {@code executeRun}/{@code waitForRbf} gia' in corso non vede
+	 * mai uno stato a meta'): usato da {@code
+	 * LinkageUnitOrchestrator#handleLuConfigPush} quando la SMU comunica un
+	 * roster diverso da quello attualmente configurato — mirror di {@link
+	 * #setRbfSize}, stesso principio ("la SMU resta l'unica fonte di verita'
+	 * per un run in corso, il JSON locale e' solo il valore di partenza").
+	 */
+	public void setParties(List<Party> parties) {
+		this.parties = parties;
 	}
 
 	public ClusteringMethod getClusteringMethod() {

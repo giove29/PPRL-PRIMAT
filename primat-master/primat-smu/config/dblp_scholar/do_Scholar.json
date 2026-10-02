@@ -1,5 +1,6 @@
 {
-  "_note": "Schema (mapping colonna->QID) del DO 'Scholar' - dataset dblp_scholar, party_Scholar_local.json/_live.json. Party dichiarata duplicateFree:false lato Linkage Unit (chiaramente dirty, fino a 20 duplicati per paper - vedi primat-examples/src/main/resources/dblp_scholar/SCHEMA.md). Stessi index/preprocessing di do_DBLP.json: stesso dataset sorgente diviso in due file, stesso allineamento di schema.",
+  "_note": "Schema (mapping colonna->QID) del DO 'Scholar' - dataset dblp_scholar, party_Scholar_local.json/_live.json. Party dichiarata duplicateFree:false (chiaramente dirty, fino a 20 duplicati per paper - vedi primat-examples/src/main/resources/dblp_scholar/SCHEMA.md) - letta dalla SMU e spinta alla Linkage Unit insieme a rbfSize prima di ogni run. Stessi index/preprocessing di do_DBLP.json: stesso dataset sorgente diviso in due file, stesso allineamento di schema.",
+  "duplicateFree": false,
   "columns": [
     { "index": 0, "name": "PARTY", "role": "PARTY" },
     { "index": 1, "name": "GLOBAL_ID", "role": "GLOBAL_ID" },

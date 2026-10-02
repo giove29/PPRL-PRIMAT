@@ -161,6 +161,14 @@ def discovered_parties():
     return parties
 
 
+def party_duplicate_free(party):
+    """Letto fresco da do_<party>.json (stesso file gia' letto da
+    build_config_push), mai cachato: 'duplicateFree' assente equivale a
+    dirty (False), stessa convenzione gia' usata lato Linkage Unit
+    (PartyJsonConfig.isDuplicateFreeOrDefault())."""
+    return bool(_load_json(_do_schema_path(party)).get("duplicateFree", False))
+
+
 def _current_broker_url():
     """Letto fresco ad ogni chiamata (stessa filosofia no-cache di
     do_<party>.json/encoding.json/state.json): nessun valore della SMU resta
@@ -811,9 +819,11 @@ def _phase_recompute_expected(parties):
     return next(iter(distinct_digests)), next(iter(distinct_sizes))
 
 
-def _phase_push_lu_config(run_id, expected_digest, rbf_size):
-    print("Invio configurazione del run alla Linkage Unit (rbfSize=" + str(rbf_size) + ")...")
-    payload = {"runId": run_id, "expectedDigest": expected_digest, "rbfSize": rbf_size}
+def _phase_push_lu_config(run_id, expected_digest, rbf_size, party_roster):
+    print("Invio configurazione del run alla Linkage Unit (rbfSize=" + str(rbf_size) + ", "
+          + str(len(party_roster)) + " party)...")
+    payload = {"runId": run_id, "expectedDigest": expected_digest, "rbfSize": rbf_size,
+               "parties": party_roster}
 
     def correlate(topic, payload_in):
         return "LU"
@@ -912,8 +922,10 @@ def run_start_command():
     if expected_digest is None:
         return
 
+    party_roster = [{"name": party, "duplicateFree": party_duplicate_free(party)} for party in parties]
+
     run_id = str(uuid.uuid4())
-    if not _phase_push_lu_config(run_id, expected_digest, rbf_size):
+    if not _phase_push_lu_config(run_id, expected_digest, rbf_size, party_roster):
         return
 
     if not _phase_start_dos(run_id, parties):
