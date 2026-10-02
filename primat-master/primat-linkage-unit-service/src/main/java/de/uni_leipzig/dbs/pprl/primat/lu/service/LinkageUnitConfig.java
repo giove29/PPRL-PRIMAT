@@ -196,6 +196,12 @@ public class LinkageUnitConfig {
 		return brokerConnectTimeoutSeconds;
 	}
 
+	/**
+	 * @return finestra massima di silenzio (secondi) nella raccolta RBF di un
+	 *         run: si resetta ad ogni chunk RBF ricevuto da un qualunque
+	 *         party (vedi {@code LinkageUnitOrchestrator#waitForRbf}), non e'
+	 *         piu' una deadline assoluta dal 2026-10-02.
+	 */
 	public long getRbfCollectionTimeoutSeconds() {
 		return rbfCollectionTimeoutSeconds;
 	}

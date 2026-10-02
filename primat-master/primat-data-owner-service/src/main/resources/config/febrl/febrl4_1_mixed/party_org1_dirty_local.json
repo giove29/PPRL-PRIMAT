@@ -1,6 +1,7 @@
 {
   "party": "org1",
   "debug": true,
+  "rbfChunkSize": 2000,
   "dataSource": {
     "type": "CSV",
     "csv": {

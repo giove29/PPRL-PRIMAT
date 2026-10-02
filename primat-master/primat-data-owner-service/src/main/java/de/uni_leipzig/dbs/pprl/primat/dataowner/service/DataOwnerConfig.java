@@ -44,6 +44,7 @@ public class DataOwnerConfig {
 	private final String hmacKey;
 	private final String version;
 	private final boolean pending;
+	private final int rbfChunkSize;
 
 	/**
 	 * Costruito esclusivamente da {@link DataOwnerConfigLoader} dopo la
@@ -83,12 +84,15 @@ public class DataOwnerConfig {
 	 *                                     {@code columns}/{@code bloomFilterLength}/{@code hardener}/ecc. sono
 	 *                                     placeholder innocui, mai letti finche' {@link #isPending()} non torna
 	 *                                     {@code false}
+	 * @param rbfChunkSize                 numero massimo di record RBF per messaggio MQTT pubblicato da
+	 *                                     {@code DataOwnerService#handleStartCommand}; campo di competenza del
+	 *                                     file "locale" (tuning di performance dell'istanza, mai pushato dalla SMU)
 	 */
 	public DataOwnerConfig(String party, DataSourceType dataSourceType, String csvFilePath, boolean csvHasHeader,
 			char csvDelimiter, DbSourceConfig dbConfig, String mqttBrokerUrl, List<ColumnConfig> columns, int bloomFilterLength,
 			BloomFilterHardener hardener, boolean debug, boolean missingValueHandlingEnabled,
 			List<String> missingValueAnchorPriority, List<String> hardeningDescriptions, String hmacKey,
-			String version, boolean pending) {
+			String version, boolean pending, int rbfChunkSize) {
 		this.party = party;
 		this.dataSourceType = dataSourceType;
 		this.csvFilePath = csvFilePath;
@@ -107,6 +111,7 @@ public class DataOwnerConfig {
 		this.hmacKey = hmacKey;
 		this.version = version;
 		this.pending = pending;
+		this.rbfChunkSize = rbfChunkSize;
 	}
 
 	public String getParty() {
@@ -182,6 +187,16 @@ public class DataOwnerConfig {
 	 */
 	public boolean isPending() {
 		return pending;
+	}
+
+	/**
+	 * @return numero massimo di record RBF per messaggio MQTT pubblicato da
+	 *         {@code DataOwnerService#handleStartCommand}: un Data Owner con
+	 *         molti record pubblica i propri RBF in più chunk invece di un
+	 *         unico messaggio gigante (vedi {@code RbfPayload#getChunkIndex()}).
+	 */
+	public int getRbfChunkSize() {
+		return rbfChunkSize;
 	}
 
 	/**
@@ -287,6 +302,7 @@ public class DataOwnerConfig {
 		}
 		sb.append('\n');
 		sb.append("Debug:                  ").append(debug ? "On" : "Off").append('\n');
+		sb.append("RBF chunk size:         ").append(rbfChunkSize).append(" record/messaggio\n");
 		sb.append("RBF length:             ").append(bloomFilterLength).append(" bit\n");
 		sb.append("Hardening:              ");
 		if (hardeningDescriptions.isEmpty()) {

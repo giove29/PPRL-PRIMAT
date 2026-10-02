@@ -17,6 +17,16 @@ import java.util.List;
  * usa il proprio {@code rbfSize}, spinto dalla SMU, come unica fonte di
  * verità (vedi {@code LinkageUnitConfig#getRbfSize()}). Disaccoppiato dal
  * modello di dominio {@code Record}.
+ * <p>
+ * Dal 2026-10-02 un Data Owner con molti record pubblica i propri RBF in più
+ * messaggi ("chunk") sullo stesso topic invece di un unico payload gigante
+ * (vedi {@code DataOwnerService#handleStartCommand}): {@link #chunkIndex}/
+ * {@link #totalChunks} identificano la posizione di questo messaggio nella
+ * sequenza (party piccoli: un solo chunk, {@code chunkIndex=0},
+ * {@code totalChunks=1}). {@link #configHash} è ripetuto identico su ogni
+ * chunk dello stesso party, cosi' la Linkage Unit può verificarlo "fail
+ * fast" già al primo chunk ricevuto invece di aspettare la raccolta
+ * completa (vedi {@code LinkageUnitOrchestrator#waitForRbf}).
  */
 public class RbfPayload {
 
@@ -24,15 +34,20 @@ public class RbfPayload {
 	private String party;
 	private List<RbfRecord> records;
 	private String configHash;
+	private int chunkIndex;
+	private int totalChunks;
 
 	public RbfPayload() {
 	}
 
-	public RbfPayload(String runId, String party, List<RbfRecord> records, String configHash) {
+	public RbfPayload(String runId, String party, List<RbfRecord> records, String configHash, int chunkIndex,
+			int totalChunks) {
 		this.runId = runId;
 		this.party = party;
 		this.records = records;
 		this.configHash = configHash;
+		this.chunkIndex = chunkIndex;
+		this.totalChunks = totalChunks;
 	}
 
 	public String getRunId() {
@@ -73,6 +88,24 @@ public class RbfPayload {
 
 	public void setConfigHash(String configHash) {
 		this.configHash = configHash;
+	}
+
+	/** @return posizione (0-based) di questo chunk nella sequenza di pubblicazione RBF di questo party per questo run. */
+	public int getChunkIndex() {
+		return chunkIndex;
+	}
+
+	public void setChunkIndex(int chunkIndex) {
+		this.chunkIndex = chunkIndex;
+	}
+
+	/** @return numero totale di chunk dichiarati dal Data Owner per questo party/run (1 se non frazionato). */
+	public int getTotalChunks() {
+		return totalChunks;
+	}
+
+	public void setTotalChunks(int totalChunks) {
+		this.totalChunks = totalChunks;
 	}
 
 	/**

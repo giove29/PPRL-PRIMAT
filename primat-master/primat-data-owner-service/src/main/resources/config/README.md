@@ -7,9 +7,12 @@ mvn -pl primat-data-owner-service exec:java -Dexec.args="<nome>_local.json"
 ```
 
 - **`<nome>_local.json`** ("locale", immutabile — mai riscritto dal processo in esecuzione):
-  `party`, `debug`, `dataSource`, più `liveConfigPath` (percorso del file "live", relativo alla
-  cartella del file locale se non assoluto) e `bootstrapMqttBrokerUrl` (broker usato solo finché il
-  file live non esiste/non è ancora una configurazione reale).
+  `party`, `debug`, `dataSource`, `rbfChunkSize` (opzionale, default 2000 — numero massimo di
+  record RBF per messaggio MQTT: dal 2026-10-02 un Data Owner con molti record pubblica i propri
+  RBF in più chunk sequenziali invece di un unico messaggio gigante, vedi
+  `DataOwnerService#handleStartCommand`), più `liveConfigPath` (percorso del file "live", relativo
+  alla cartella del file locale se non assoluto) e `bootstrapMqttBrokerUrl` (broker usato solo
+  finché il file live non esiste/non è ancora una configurazione reale).
 - **`<nome>_live.json`** ("live", pushabile dalla SMU via `ConfigPush`): `mqttBrokerUrl`, `columns`
   (schema + preprocessing), `bloomFilter`, `missingValueHandling`, `hmacKey`, `version`.
 

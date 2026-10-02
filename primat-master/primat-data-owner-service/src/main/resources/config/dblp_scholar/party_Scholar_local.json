@@ -1,6 +1,7 @@
 {
   "party": "Scholar",
   "debug": true,
+  "rbfChunkSize": 2000,
   "dataSource": {
     "type": "CSV",
     "csv": {

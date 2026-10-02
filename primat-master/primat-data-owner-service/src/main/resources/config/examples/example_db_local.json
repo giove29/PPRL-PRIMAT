@@ -1,6 +1,7 @@
 {
   "party": "A",
   "debug": true,
+  "rbfChunkSize": 2000,
   "dataSource": {
     "type": "DB",
     "db": {

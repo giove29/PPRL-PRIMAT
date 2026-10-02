@@ -162,7 +162,7 @@ class DataOwnerConfigLoaderTest {
 
 		final JsonObject full = JsonParser.parseString(content).getAsJsonObject();
 		final JsonObject local = new JsonObject();
-		for (final String key : new String[] { "party", "debug", "dataSource" }) {
+		for (final String key : new String[] { "party", "debug", "dataSource", "rbfChunkSize" }) {
 			if (full.has(key)) {
 				local.add(key, full.get(key));
 			}
@@ -198,6 +198,36 @@ class DataOwnerConfigLoaderTest {
 		assertEquals(5, config.getColumns().size());
 		assertTrue(config.getHardener() instanceof NoHardener);
 		assertEquals(1024, config.computeEffectiveRbfBitLength());
+	}
+
+	@Test
+	void rbfChunkSizeDefaultsTo2000WhenOmitted() throws Exception {
+		final ConfigPaths paths = writeJson("rbf-chunk-default.json", VALID_JSON);
+
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
+
+		assertEquals(DataOwnerConfigLoader.DEFAULT_RBF_CHUNK_SIZE, config.getRbfChunkSize());
+		assertEquals(2000, config.getRbfChunkSize());
+	}
+
+	@Test
+	void rbfChunkSizeExplicitValueIsHonored() throws Exception {
+		final String json = VALID_JSON.replace("\"party\": \"A\",", "\"party\": \"A\", \"rbfChunkSize\": 500,");
+		final ConfigPaths paths = writeJson("rbf-chunk-explicit.json", json);
+
+		final DataOwnerConfig config = DataOwnerConfigLoader.load(paths.local, paths.live);
+
+		assertEquals(500, config.getRbfChunkSize());
+	}
+
+	@Test
+	void rbfChunkSizeZeroOrNegativeThrowsConfigException() throws Exception {
+		final String json = VALID_JSON.replace("\"party\": \"A\",", "\"party\": \"A\", \"rbfChunkSize\": 0,");
+		final ConfigPaths paths = writeJson("rbf-chunk-invalid.json", json);
+
+		final DataOwnerConfigException e = assertThrows(DataOwnerConfigException.class,
+				() -> DataOwnerConfigLoader.load(paths.local, paths.live));
+		assertTrue(e.getMessage().contains("rbfChunkSize"));
 	}
 
 	@Test

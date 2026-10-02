@@ -25,6 +25,7 @@ public class DataOwnerJsonConfig {
 	private String version;
 	private String liveConfigPath;
 	private String bootstrapMqttBrokerUrl;
+	private Integer rbfChunkSize;
 
 	public String getParty() {
 		return party;
@@ -84,5 +85,18 @@ public class DataOwnerJsonConfig {
 	/** @return la versione della configurazione applicata (scritta da {@code DataOwnerService.handleConfigPush}), {@code null} se assente (file mai toccato da una ConfigPush). */
 	public String getVersion() {
 		return version;
+	}
+
+	/**
+	 * @return numero massimo di record RBF per messaggio MQTT pubblicato da
+	 *         questo Data Owner, campo di competenza esclusiva del file
+	 *         "locale" (tuning di performance dell'istanza di processo, non
+	 *         un parametro di encoding/identita' spinto dalla SMU);
+	 *         {@code null} se assente, in tal caso
+	 *         {@code DataOwnerConfigLoader.DEFAULT_RBF_CHUNK_SIZE} fa da
+	 *         default.
+	 */
+	public Integer getRbfChunkSize() {
+		return rbfChunkSize;
 	}
 }

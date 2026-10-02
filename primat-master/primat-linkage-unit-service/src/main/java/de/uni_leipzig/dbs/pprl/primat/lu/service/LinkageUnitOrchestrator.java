@@ -23,6 +23,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import org.eclipse.paho.client.mqttv3.MqttException;
@@ -696,60 +698,92 @@ public class LinkageUnitOrchestrator {
 	}
 
 	/**
-	 * Attende la raccolta di tutti gli RBF di un run (con timeout, log di
-	 * progresso periodico), senza pubblicare o ripubblicare alcun comando: nel
-	 * protocollo guidato dalla SMU e' la SMU a pubblicare il vero
-	 * {@link StartCommand} ai Data Owner (dopo l'ack di {@link
-	 * #handleLuConfigPush}), la Linkage Unit si limita ad ascoltare.
+	 * Attende la raccolta di tutti gli RBF di un run, senza pubblicare o
+	 * ripubblicare alcun comando: nel protocollo guidato dalla SMU e' la SMU a
+	 * pubblicare il vero {@link StartCommand} ai Data Owner (dopo l'ack di
+	 * {@link #handleLuConfigPush}), la Linkage Unit si limita ad ascoltare.
+	 * <p>
+	 * Dal 2026-10-02 un Data Owner con molti record pubblica i propri RBF in
+	 * più "chunk" invece di un unico messaggio gigante (vedi
+	 * {@link RbfPayload#getChunkIndex()}), quindi il timeout
+	 * {@link de.uni_leipzig.dbs.pprl.primat.lu.service.LinkageUnitConfig#getRbfCollectionTimeoutSeconds()}
+	 * non è più una deadline assoluta ma una finestra di **silenzio massimo**:
+	 * si resetta ad ogni chunk ricevuto da un qualunque party, cosi' un Data
+	 * Owner lento ma vivo (es. 64k record) non fa più abortire il run, mentre
+	 * un Data Owner realmente bloccato o morto (nessun chunk per
+	 * {@code rbfCollectionTimeoutSeconds} secondi) viene comunque rilevato.
 	 *
 	 * @param expectedDigest digest di configurazione atteso, comunicato dalla
 	 *                        SMU insieme al {@code runId} (mai {@code null}:
 	 *                        qualunque run della Linkage Unit, qualunque sia
 	 *                        la modalita' di soglia, e' sempre innescato da un
 	 *                        {@link LuConfigPush} della SMU che lo fornisce).
-	 *                        Ogni RBF ricevuto con un digest diverso fa
-	 *                        fallire il run.
+	 *                        Ogni chunk ricevuto con un digest diverso fa
+	 *                        fallire il run (controllato gia' al primo chunk
+	 *                        di ciascun party, non solo a raccolta completata).
 	 */
 	private Map<Party, Collection<Record>> waitForRbf(String runId, String expectedDigest) throws Exception {
 		final List<Party> parties = config.getParties();
-		final Map<String, RbfPayload> receivedByParty = new ConcurrentHashMap<>();
+		final Map<String, PartyRbfAccumulator> accumulators = new ConcurrentHashMap<>();
 		final CountDownLatch latch = new CountDownLatch(parties.size());
+		final AtomicLong lastProgressAtMillis = new AtomicLong(System.currentTimeMillis());
+		final AtomicReference<String> digestMismatch = new AtomicReference<>();
 
 		client.subscribe(MqttTopics.rbfTopicWildcard(runId), (topic, message) -> {
-			final RbfPayload payload = gson.fromJson(new String(message.getPayload(), StandardCharsets.UTF_8),
+			final RbfPayload chunk = gson.fromJson(new String(message.getPayload(), StandardCharsets.UTF_8),
 					RbfPayload.class);
-			if (receivedByParty.putIfAbsent(payload.getParty(), payload) == null) {
+			lastProgressAtMillis.set(System.currentTimeMillis());
+			if (!expectedDigest.equals(chunk.getConfigHash())) {
+				digestMismatch.compareAndSet(null, "Party '" + chunk.getParty() + "': digest di configurazione ("
+						+ chunk.getConfigHash() + ") non corrisponde a quello atteso dalla SMU (" + expectedDigest
+						+ ")");
+				return;
+			}
+			final PartyRbfAccumulator accumulator = accumulators.computeIfAbsent(chunk.getParty(),
+					p -> new PartyRbfAccumulator(chunk.getTotalChunks()));
+			final boolean justCompleted = accumulator.addChunk(chunk);
+			System.out.println("  run " + runId + ": [" + chunk.getParty() + "] chunk " + (chunk.getChunkIndex() + 1)
+					+ "/" + chunk.getTotalChunks() + " ricevuto (" + accumulator.receivedCount() + "/"
+					+ chunk.getTotalChunks() + ")");
+			if (justCompleted) {
 				latch.countDown();
 			}
 		});
 
 		boolean allReceived = false;
-		final long deadline = System.currentTimeMillis() + config.getRbfCollectionTimeoutSeconds() * 1000L;
-		while (!allReceived && System.currentTimeMillis() < deadline) {
-			final long remainingSeconds = Math.max(1L, (deadline - System.currentTimeMillis()) / 1000L);
-			allReceived = latch.await(Math.min(config.getRbfRepublishIntervalSeconds(), remainingSeconds),
-					TimeUnit.SECONDS);
+		final long idleTimeoutMillis = config.getRbfCollectionTimeoutSeconds() * 1000L;
+		while (!allReceived) {
+			if (digestMismatch.get() != null) {
+				throw new IllegalStateException(digestMismatch.get());
+			}
+			final long idleMillis = System.currentTimeMillis() - lastProgressAtMillis.get();
+			if (idleMillis >= idleTimeoutMillis) {
+				break;
+			}
+			final long pollSeconds = Math.max(1L,
+					Math.min(config.getRbfRepublishIntervalSeconds(), (idleTimeoutMillis - idleMillis) / 1000L));
+			allReceived = latch.await(pollSeconds, TimeUnit.SECONDS);
 			if (!allReceived) {
 				final List<String> missing = parties.stream().map(Party::getName)
-						.filter(name -> !receivedByParty.containsKey(name)).collect(Collectors.toList());
+						.filter(name -> accumulators.get(name) == null || !accumulators.get(name).isComplete())
+						.collect(Collectors.toList());
 				System.out.println("  run " + runId + ": ancora in attesa di " + missing);
 			}
 		}
-		if (!allReceived) {
-			throw new IllegalStateException("Timeout in attesa degli RBF per il run " + runId + ": ricevuti da "
-					+ receivedByParty.keySet());
+		if (digestMismatch.get() != null) {
+			throw new IllegalStateException(digestMismatch.get());
 		}
 
-		// Verifica diretta contro il digest comunicato dalla SMU (protocollo
-		// StartCommand): copre sia la coerenza cross-party sia la
-		// corrispondenza con la configurazione gia' confermata in fase di
-		// checkVersion, in un solo controllo.
-		final List<String> mismatched = parties.stream().map(Party::getName)
-				.filter(name -> !expectedDigest.equals(receivedByParty.get(name).getConfigHash()))
-				.collect(Collectors.toList());
-		if (!mismatched.isEmpty()) {
-			throw new IllegalStateException("Digest di configurazione non corrispondente a quello atteso dalla "
-					+ "SMU per i party: " + mismatched);
+		// Validazione esplicita "chunk mancanti" al momento della ricostruzione
+		// finale: per costruzione il latch si decrementa solo quando un party
+		// risulta completo, quindi qui sotto e' normalmente gia' vero - ma la
+		// verifichiamo comunque in modo esplicito (indici mancanti elencati per
+		// nome) cosi' il run viene sempre abortito con un errore descrittivo
+		// (mai assemblato parzialmente) se anche un solo party non ha tutti i
+		// suoi chunk, qualunque sia la causa (timeout idle scattato, o uno
+		// stato altrimenti inconsistente).
+		if (!allReceived || !isCollectionComplete(parties, accumulators)) {
+			throw new IllegalStateException(buildMissingChunksMessage(runId, parties, accumulators));
 		}
 		System.out.println("Digest di configurazione verificato: tutte le " + parties.size()
 				+ " sorgenti corrispondono al digest atteso dalla SMU.");
@@ -772,23 +806,102 @@ public class LinkageUnitOrchestrator {
 		if (config.isPersistenceEnabled()) {
 			final Map<String, DbConnection.EncodingSnapshot> snapshotsByParty = new HashMap<>();
 			for (final Party party : parties) {
-				final RbfPayload payload = receivedByParty.get(party.getName());
 				snapshotsByParty.put(party.getName(),
-						new DbConnection.EncodingSnapshot(config.getRbfSize(), payload.getConfigHash()));
+						new DbConnection.EncodingSnapshot(config.getRbfSize(), expectedDigest));
 			}
 			config.getDbConnection().checkEncodingState(snapshotsByParty);
 		}
 
 		final Map<Party, Collection<Record>> input = new HashMap<>();
 		for (final Party party : parties) {
-			final RbfPayload payload = receivedByParty.get(party.getName());
+			final PartyRbfAccumulator accumulator = accumulators.get(party.getName());
 			final List<Record> records = new ArrayList<>();
-			for (final RbfPayload.RbfRecord rbfRecord : payload.getRecords()) {
+			for (final RbfPayload.RbfRecord rbfRecord : accumulator.assembleOrdered()) {
 				records.add(RbfCodec.toRecord(rbfRecord, party));
 			}
 			input.put(party, records);
 		}
 		return input;
+	}
+
+	static boolean isCollectionComplete(List<Party> parties, Map<String, PartyRbfAccumulator> accumulators) {
+		return parties.stream().allMatch(party -> {
+			final PartyRbfAccumulator accumulator = accumulators.get(party.getName());
+			return accumulator != null && accumulator.isComplete();
+		});
+	}
+
+	/** Messaggio d'errore descrittivo, con gli indici di chunk mancanti elencati per party, usato da {@link #waitForRbf}. */
+	static String buildMissingChunksMessage(String runId, List<Party> parties,
+			Map<String, PartyRbfAccumulator> accumulators) {
+		final List<String> details = new ArrayList<>();
+		for (final Party party : parties) {
+			final PartyRbfAccumulator accumulator = accumulators.get(party.getName());
+			if (accumulator == null) {
+				details.add(party.getName() + " (nessun chunk ricevuto)");
+			}
+			else if (!accumulator.isComplete()) {
+				details.add(party.getName() + " (ricevuti " + accumulator.receivedCount() + "/"
+						+ accumulator.getTotalChunks() + ", mancanti indici " + accumulator.missingIndexes() + ")");
+			}
+		}
+		return "Timeout in attesa degli RBF per il run " + runId + ": chunk mancanti -> "
+				+ String.join("; ", details);
+	}
+
+	/**
+	 * Accumula i chunk RBF di un singolo party per un singolo run (vedi
+	 * {@link #waitForRbf}), deduplicando per {@link RbfPayload#getChunkIndex()}
+	 * - un chunk ripubblicato o duplicato non altera lo stato. L'ordine di
+	 * arrivo MQTT non e' garantito (Paho ammette piu' messaggi in-flight),
+	 * quindi {@link #assembleOrdered()} riordina sempre per indice prima di
+	 * restituire i record.
+	 */
+	static final class PartyRbfAccumulator {
+
+		private final int totalChunks;
+		private final Map<Integer, List<RbfPayload.RbfRecord>> chunksByIndex = new ConcurrentHashMap<>();
+
+		PartyRbfAccumulator(int totalChunks) {
+			this.totalChunks = totalChunks;
+		}
+
+		/** @return {@code true} se questo chunk ha appena reso il party completo (per decrementare il latch una sola volta). */
+		boolean addChunk(RbfPayload chunk) {
+			final boolean wasComplete = isComplete();
+			chunksByIndex.putIfAbsent(chunk.getChunkIndex(), chunk.getRecords());
+			return !wasComplete && isComplete();
+		}
+
+		boolean isComplete() {
+			return chunksByIndex.size() == totalChunks;
+		}
+
+		int receivedCount() {
+			return chunksByIndex.size();
+		}
+
+		int getTotalChunks() {
+			return totalChunks;
+		}
+
+		List<Integer> missingIndexes() {
+			final List<Integer> missing = new ArrayList<>();
+			for (int i = 0; i < totalChunks; i++) {
+				if (!chunksByIndex.containsKey(i)) {
+					missing.add(i);
+				}
+			}
+			return missing;
+		}
+
+		List<RbfPayload.RbfRecord> assembleOrdered() {
+			final List<RbfPayload.RbfRecord> ordered = new ArrayList<>();
+			for (int i = 0; i < totalChunks; i++) {
+				ordered.addAll(chunksByIndex.get(i));
+			}
+			return ordered;
+		}
 	}
 
 	private static void printHistogram(SimilarityHistogramCollector collector, double configuredThreshold) {

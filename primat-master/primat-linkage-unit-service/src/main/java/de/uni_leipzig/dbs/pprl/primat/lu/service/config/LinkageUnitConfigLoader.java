@@ -54,6 +54,15 @@ public final class LinkageUnitConfigLoader {
 	private static final int DEFAULT_LSH_KEYS = 30;
 	private static final long DEFAULT_LSH_SEED = 42L;
 	private static final long DEFAULT_BROKER_CONNECT_TIMEOUT_SECONDS = 30L;
+	/**
+	 * Default per {@code mqtt.rbfCollectionTimeoutSeconds} se omesso: dal
+	 * 2026-10-02 non e' piu' una deadline assoluta ma la finestra massima di
+	 * **silenzio** nella raccolta RBF di un run - si resetta ad ogni chunk
+	 * ricevuto da un qualunque party (vedi
+	 * {@code LinkageUnitOrchestrator#waitForRbf}), cosi' un Data Owner con
+	 * molti record (che pubblica piu' chunk nel tempo) non fa piu' scadere il
+	 * timeout solo perche' il suo invio e' lungo, purche' resti attivo.
+	 */
 	private static final long DEFAULT_RBF_COLLECTION_TIMEOUT_SECONDS = 30L;
 	private static final long DEFAULT_RBF_REPUBLISH_INTERVAL_SECONDS = 15L;
 	/**

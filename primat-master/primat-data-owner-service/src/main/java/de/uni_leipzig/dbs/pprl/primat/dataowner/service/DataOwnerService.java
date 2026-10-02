@@ -227,13 +227,24 @@ public class DataOwnerService {
 					.map(RbfCodec::toRbfRecord)
 					.collect(Collectors.toList());
 
-			final RbfPayload payload = new RbfPayload(runId, cfg.getParty(), rbfRecords, cfg.computeConfigHash());
-			client.publish(MqttTopics.rbfTopic(runId, cfg.getParty()), gson.toJson(payload));
+			final String configHash = cfg.computeConfigHash();
+			final int chunkSize = cfg.getRbfChunkSize();
+			final int totalChunks = Math.max(1, (int) Math.ceil(rbfRecords.size() / (double) chunkSize));
+			for (int chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+				final int from = chunkIndex * chunkSize;
+				final int to = Math.min(from + chunkSize, rbfRecords.size());
+				final RbfPayload chunk = new RbfPayload(runId, cfg.getParty(), rbfRecords.subList(from, to),
+						configHash, chunkIndex, totalChunks);
+				client.publish(MqttTopics.rbfTopic(runId, cfg.getParty()), gson.toJson(chunk));
+				System.out.println("[" + cfg.getParty() + "] RBF chunk " + (chunkIndex + 1) + "/" + totalChunks
+						+ " pubblicato (" + chunk.getRecords().size() + " record) su "
+						+ MqttTopics.rbfTopic(runId, cfg.getParty()));
+			}
 
 			client.publish(MqttTopics.doRunStatusTopic(cfg.getParty()),
 					gson.toJson(new StatusMessage(runId, cfg.getParty(), "DONE", rbfRecords.size() + " record")));
-			System.out.println("[" + cfg.getParty() + "] RBF pubblicato (" + rbfRecords.size() + " record) su "
-					+ MqttTopics.rbfTopic(runId, cfg.getParty()));
+			System.out.println("[" + cfg.getParty() + "] RBF completato: " + rbfRecords.size() + " record in "
+					+ totalChunks + " chunk su " + MqttTopics.rbfTopic(runId, cfg.getParty()));
 		} catch (Exception e) {
 			System.err.println("[" + cfg.getParty() + "] errore durante l'elaborazione del run " + runId + ":");
 			e.printStackTrace();

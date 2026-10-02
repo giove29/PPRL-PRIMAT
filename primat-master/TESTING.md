@@ -47,11 +47,18 @@ Output atteso: `Broker MQTT in ascolto su tcp://0.0.0.0:1883 (Ctrl+C per fermarl
 ## 3. Avvio dei Data Owner
 
 Un processo per party, **un solo** argomento: il path del JSON "locale" (`party`/`debug`/
-`dataSource`, mai riscritto dal processo). Il file locale dichiara al proprio interno
+`dataSource`/`rbfChunkSize`, mai riscritto dal processo). Il file locale dichiara al proprio interno
 (`liveConfigPath`, relativo alla propria cartella se non assoluto) dove si trova il JSON "live"
 (`mqttBrokerUrl`/schema colonne/tuning RBF, pushabile e hot-riconfigurabile dalla SMU — vedi
 `primat-data-owner-service/.../service/config/`). `exec-maven-plugin` è configurato nel `pom.xml`
 del modulo (2026-09-16), quindi non serve costruire il classpath a mano:
+
+`rbfChunkSize` (default 2000 se omesso, validato `> 0`) e' il numero massimo di record RBF per
+messaggio MQTT: dal 2026-10-02 un Data Owner non pubblica più l'intero batch di RBF in un solo
+messaggio ma lo spezza in più chunk sequenziali sullo stesso topic (`primat/lu/{runId}/rbf/{party}`),
+loggando a schermo ogni chunk pubblicato — pensato per i party con molti record (es. decine di
+migliaia), che altrimenti rischiano di far scadere il timeout di raccolta della Linkage Unit
+(vedi sezione 8, "Timeout in `waitForRbf`").
 
 ```bash
 "$MVN" -pl primat-data-owner-service exec:java -Dexec.args="src/main/resources/config/examples/example_clean/party_A_clean_local.json"
@@ -128,7 +135,7 @@ Dal 2026-09-16 `LinkageUnitOrchestrator` è configurato via JSON (mirror del Dat
 "$MVN" -pl primat-linkage-unit-service exec:java -Dexec.args="src/main/resources/config/mscd_ap.json"
 ```
 
-Il JSON ha il campo obbligatorio top-level `"mqttBrokerUrl": "tcp://localhost:1883"` (identico ai Data Owner, endpoint del broker avviato nella sezione 2bis); la sezione opzionale `mqtt` contiene solo i tuning `brokerConnectTimeoutSeconds` (default 30), `rbfCollectionTimeoutSeconds` (30), `rbfRepublishIntervalSeconds` (3).
+Il JSON ha il campo obbligatorio top-level `"mqttBrokerUrl": "tcp://localhost:1883"` (identico ai Data Owner, endpoint del broker avviato nella sezione 2bis); la sezione opzionale `mqtt` contiene solo i tuning `brokerConnectTimeoutSeconds` (default 30), `rbfCollectionTimeoutSeconds` (default 30 — dal 2026-10-02 non è più una deadline assoluta ma la finestra massima di **silenzio** nella raccolta RBF, si resetta ad ogni chunk ricevuto da un qualunque party), `rbfRepublishIntervalSeconds` (default 15, cadenza di stampa dei party ancora incompleti).
 
 Sostituire `mscd_ap.json` con `center_clustering.json` / `mcl.json` / `global_greedy.json` / `clip.json` per le altre 4 strategie. `global_greedy.json`/`clip.json` richiedono party tutte `duplicateFree: true` (vincolo più stretto di MSCD-AP, che ne richiede solo una): un roster con anche una sola party dirty spinto dalla SMU viene rifiutato con un ack di errore (2026-10-02: non più al caricamento del JSON, dato che i party non ci sono più — la verifica avviene ad ogni push, vedi sezione 4bis).
 
@@ -188,7 +195,7 @@ Per confrontare rapidamente le performance a più soglie senza modificare/rilanc
 ## 8. Troubleshooting rapido
 
 - **`Broker MQTT non raggiungibile su tcp://...`** (Linkage Unit, esce dopo `mqtt.brokerConnectTimeoutSeconds`): il broker non è stato avviato o `mqttBrokerUrl` non combacia con host/porta del broker. Avviarlo (sezione 2bis) e riprovare.
-- **Timeout in `collectRbf`** (`Timeout in attesa degli RBF per il run ...: ricevuti da [...]`): uno dei Data Owner non è stato avviato/è ancora in retry di connessione, o il suo `mqttBrokerUrl` punta a un broker diverso da quello della LU. Verificare che tutti i processi Data Owner attesi (uno per party dichiarata nel JSON della Linkage Unit) risultino "in ascolto" prima di avviare l'orchestratore. Se il broker parte con `Address already in use`, la porta è occupata da un'altra istanza: fermarla o usare un'altra porta.
+- **Timeout in `waitForRbf`** (`Timeout in attesa degli RBF per il run ...: chunk mancanti -> ...`, con l'elenco degli indici di chunk mancanti per party): o uno dei Data Owner non è stato avviato/è ancora in retry di connessione, o il suo `mqttBrokerUrl` punta a un broker diverso da quello della LU, oppure (dal 2026-10-02) è rimasto silenzioso — nessun chunk RBF pubblicato — per più di `mqtt.rbfCollectionTimeoutSeconds` secondi di fila. Un Data Owner con **molti record** (es. decine di migliaia) non va più in questo timeout solo per il tempo di calcolo/pubblicazione: pubblica i suoi RBF in più chunk (`rbfChunkSize` nel file *locale* del DO, default 2000 record/messaggio) e ogni chunk ricevuto resetta la finestra di silenzio — se il sintomo persiste anche con chunk che continuano ad arrivare regolarmente, il timeout va alzato; se invece non arriva **nessun** chunk, il problema è a monte (processo non avviato/broker sbagliato). Verificare che tutti i processi Data Owner attesi (uno per party dichiarata nel JSON della Linkage Unit) risultino "in ascolto" prima di avviare l'orchestratore. Se il broker parte con `Address already in use`, la porta è occupata da un'altra istanza: fermarla o usare un'altra porta.
 - **Errore di connessione Postgres per Center Clustering/MSCD-AP/Global Greedy/CLIP** (`PersistenceException`/`Connection refused`): il ramo MCL non dipende da Postgres, quindi resta disponibile anche senza DB; le altre 4 strategie lo richiedono, ciascuna sul proprio database (vedi sezione 1). Verificare `docker ps` (container `primat-postgres` in esecuzione) e che le credenziali/il nome DB nel JSON (`database.{url,user,password}`) combacino con quelli creati nel container.
 - **`Campo obbligatorio 'database' mancante`**: il JSON usa `clusteringMethod` diverso da `MCL` ma non ha una sezione `database` — obbligatoria per le 4 strategie persistenti, vedi sezione 4.
 

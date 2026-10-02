@@ -1,0 +1,152 @@
+{
+  "version": "19",
+  "columns": [
+    {
+      "index": 0,
+      "name": "PARTY",
+      "role": "PARTY"
+    },
+    {
+      "index": 1,
+      "name": "GLOBAL_ID",
+      "role": "GLOBAL_ID"
+    },
+    {
+      "index": 2,
+      "name": "ID",
+      "role": "ID"
+    },
+    {
+      "index": 3,
+      "name": "title",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "UPPERCASE"
+        },
+        {
+          "type": "REMOVE_ACCENTS"
+        },
+        {
+          "type": "REMOVE_SPECIAL_CHARS"
+        },
+        {
+          "type": "TRUNCATE",
+          "from": 0,
+          "to": 20
+        }
+      ],
+      "hashFunctions": 25,
+      "salt": "TITLE_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 4,
+      "name": "authors",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "UPPERCASE"
+        },
+        {
+          "type": "REMOVE_ACCENTS"
+        },
+        {
+          "type": "REMOVE_SPECIAL_CHARS"
+        },
+        {
+          "type": "TRUNCATE",
+          "from": 0,
+          "to": 20
+        }
+      ],
+      "hashFunctions": 15,
+      "salt": "AUTHORS_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 5,
+      "name": "venue",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "UPPERCASE"
+        },
+        {
+          "type": "REMOVE_ACCENTS"
+        },
+        {
+          "type": "REMOVE_SPECIAL_CHARS"
+        },
+        {
+          "type": "TRUNCATE",
+          "from": 0,
+          "to": 20
+        }
+      ],
+      "hashFunctions": 7,
+      "salt": "VENUE_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 6,
+      "name": "year",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "REMOVE_NON_DIGITS"
+        }
+      ],
+      "hashFunctions": 13,
+      "salt": "YEAR_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    }
+  ],
+  "bloomFilter": {
+    "length": 1024,
+    "hardeningChain": []
+  },
+  "missingValueHandling": {
+    "enabled": false,
+    "anchorPriority": [
+      "title",
+      "authors",
+      "year",
+      "venue"
+    ]
+  },
+  "hmacKey": "SMU_DBLP_SCHOLAR_TEST_KEY",
+  "mqttBrokerUrl": "tcp://localhost:1883"
+}

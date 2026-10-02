@@ -49,6 +49,9 @@ public final class DataOwnerConfigLoader {
 	/** Seed del PRNG di BLIP se il campo {@code seed} e' omesso nella sezione {@code hardening}. */
 	public static final long DEFAULT_BLIP_SEED = 42L;
 
+	/** Numero di record RBF per messaggio MQTT se {@code rbfChunkSize} e' omesso nel file locale. */
+	public static final int DEFAULT_RBF_CHUNK_SIZE = 2000;
+
 	/**
 	 * Contenuto scritto nel file live quando viene creato perche' assente
 	 * all'avvio (vedi {@link #loadBootstrap(Path)}): nessuna chiave oltre
@@ -105,6 +108,7 @@ public final class DataOwnerConfigLoader {
 		validateMissingValueHandling(raw.getMissingValueHandling(), raw.getColumns(), livePath);
 		PreprocessingStepFactory.validateCrossColumnConsistency(raw.getColumns(), livePath);
 
+		final int rbfChunkSize = resolveRbfChunkSize(raw.getRbfChunkSize());
 		final int bfLength = resolveBloomFilterLength(raw.getBloomFilter(), livePath);
 		final BloomFilterHardener hardener = resolveHardener(raw.getBloomFilter(), bfLength, livePath);
 		final List<String> hardeningDescriptions = describeHardeningChain(raw.getBloomFilter());
@@ -122,7 +126,7 @@ public final class DataOwnerConfigLoader {
 		return new DataOwnerConfig(raw.getParty(), dataSource.getType(), resolvedDataSource.csvFilePath,
 				resolvedDataSource.csvHasHeader, resolvedDataSource.csvDelimiter, resolvedDataSource.dbConfig,
 				raw.getMqttBrokerUrl(), raw.getColumns(), bfLength, hardener, raw.isDebug(), missingValueHandlingEnabled,
-				missingValueAnchorPriority, hardeningDescriptions, raw.getHmacKey(), version, false);
+				missingValueAnchorPriority, hardeningDescriptions, raw.getHmacKey(), version, false, rbfChunkSize);
 	}
 
 	/**
@@ -204,10 +208,12 @@ public final class DataOwnerConfigLoader {
 	private static DataOwnerConfig buildPendingConfig(DataOwnerJsonConfig localRaw, Path localPath)
 			throws DataOwnerConfigException {
 		final ResolvedDataSource resolvedDataSource = resolveDataSource(localRaw.getDataSource(), localPath);
+		final int rbfChunkSize = resolveRbfChunkSize(localRaw.getRbfChunkSize());
 		return new DataOwnerConfig(localRaw.getParty(), localRaw.getDataSource().getType(),
 				resolvedDataSource.csvFilePath, resolvedDataSource.csvHasHeader, resolvedDataSource.csvDelimiter,
 				resolvedDataSource.dbConfig, localRaw.getBootstrapMqttBrokerUrl(), List.of(), DEFAULT_BF_LENGTH,
-				new NoHardener(), localRaw.isDebug(), false, List.of(), List.of(), null, "NOT_FOUND", true);
+				new NoHardener(), localRaw.isDebug(), false, List.of(), List.of(), null, "NOT_FOUND", true,
+				rbfChunkSize);
 	}
 
 	/** Risultato di {@link #loadBootstrap(Path)}: la configurazione (pending o meno) e il percorso live risolto. */
@@ -296,13 +302,26 @@ public final class DataOwnerConfigLoader {
 		}
 	}
 
-	/** Valida i campi di competenza del file locale: {@code party}/{@code dataSource}. */
+	/** Valida i campi di competenza del file locale: {@code party}/{@code dataSource}/{@code rbfChunkSize}. */
 	private static void validateLocalTopLevel(DataOwnerJsonConfig raw, Path localPath)
 			throws DataOwnerConfigException {
 		requireNonBlank(raw.getParty(), "party", localPath);
 		if (raw.getDataSource() == null) {
 			throw new DataOwnerConfigException("Campo obbligatorio 'dataSource' mancante in " + localPath);
 		}
+		if (raw.getRbfChunkSize() != null && raw.getRbfChunkSize() <= 0) {
+			throw new DataOwnerConfigException(
+					"'rbfChunkSize' deve essere positivo, trovato " + raw.getRbfChunkSize() + " in " + localPath);
+		}
+	}
+
+	/**
+	 * @return {@link #DEFAULT_RBF_CHUNK_SIZE} se {@code rbfChunkSize} e' omesso
+	 *         nel file locale, altrimenti il valore gia' validato da
+	 *         {@link #validateLocalTopLevel}.
+	 */
+	private static int resolveRbfChunkSize(Integer rbfChunkSize) {
+		return rbfChunkSize == null ? DEFAULT_RBF_CHUNK_SIZE : rbfChunkSize;
 	}
 
 	/** Valida i campi di competenza del file live: {@code mqttBrokerUrl}/{@code columns}. */
