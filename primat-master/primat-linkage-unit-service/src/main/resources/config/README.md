@@ -1,40 +1,34 @@
 # Config Linkage Unit
 
-Ogni JSON esegue **una sola** strategia di clustering (`clusteringMethod`), scelta in base a quali
-party del run sono dichiarate `duplicateFree` (pulite/senza duplicati interni) o meno — vincolo
-imposto da `LinkageUnitConfigLoader` all'avvio, non solo una convenzione:
+Ogni JSON esegue **una sola** strategia di clustering (`clusteringMethod`). Dal 2026-10-02
+`parties`/`rbfSize` non sono piu' campi di questo JSON: la SMU li spinge ad ogni avvio di run
+(protocollo StartCommand, insieme nello stesso `LuConfigPush`), la Linkage Unit li tiene in memoria
+solo per la durata del run e li dimentica subito dopo — nessun file li contiene mai. La
+compatibilita' tra composizione dirty/clean del roster spinto e `clusteringMethod` **locale**
+(questo si', letto dal JSON) resta verificata ad ogni push da `LinkageUnitConfigLoader.resolvePartyRoster`:
 
-| Composizione party | Strategie valide | Note |
+| Composizione party (dal push SMU) | Strategie `clusteringMethod` compatibili | Note |
 |---|---|---|
 | **Tutte dirty** (una sola party, self-linkage, o più party tutte dirty) | `CENTER_CLUSTERING`, `MCL` | MCL non persiste mai su DB (solo CSV) |
 | **Mista** (almeno una clean, almeno una dirty) | `MSCD_AP` | Richiede almeno una party `duplicateFree:true` |
 | **Tutte clean** | `GLOBAL_GREEDY`, `CLIP` | Richiedono **tutte** le party `duplicateFree:true` |
 
-I nomi delle `parties` devono coincidere esattamente (case-insensitive) con i `party` dichiarati
-lato Data Owner per lo stesso dataset.
+Un roster incompatibile con il `clusteringMethod` configurato in questo file fa rifiutare il run
+con un ack di errore alla SMU, prima di qualunque elaborazione.
 
-## Dataset disponibili
+## File in questa cartella
 
-- **`febrl/`** — 4 scenari: `febrl2_dirty`/`febrl3_dirty` (party `org` dirty, self-linkage) →
-  `CENTER_CLUSTERING`+`MCL`; `febrl4_1_mixed` (`org` clean + `org1` dirty) → solo `MSCD_AP`;
-  `febrl4_clean` (`org`+`org1` entrambe clean) → `CLIP`+`GLOBAL_GREEDY`.
-- **`dblp_scholar/`** — `mscd_ap.json`, party `DBLP` (clean, ~97.9% duplicate-free) + `Scholar`
-  (dirty) — scenario "mixed", stesso schema di `febrl4_1_mixed`.
-- **`ncvoters_naumann/`** — `center_clustering.json`+`mcl.json`, party `A`+`B` **entrambe dirty**
-  (duplicati interni confermati empiricamente sui CSV generati) — nessuna strategia "clean"/"mixed"
-  applicabile.
+- **5 config canonici alla radice** (`mcl.json`, `center_clustering.json`, `mscd_ap.json`,
+  `global_greedy.json`, `clip.json`) — uno per algoritmo, tuning minimo, `persistence.enabled:false`
+  + `csvOutputPath` (nessun database richiesto per eseguirli).
+- **`examples/full_reference.json`** — riferimento esaustivo con *tutti* i campi validi (commento
+  `_<campo>` per ciascuna chiave), incluse le 5 sezioni di tuning per-algoritmo
+  (`mscdAp`/`centerClustering`/`mcl`/`globalGreedy`/`clip`) e `persistence.enabled:true` + `database`
+  popolati (unico file con questa sezione, a scopo di documentazione).
+- **`examples/example_complete.json`** — configurazione realistica completa (broker, soglia,
+  blocking, timeout MQTT, persistenza/database), ma **senza** i blocchi di tuning per-algoritmo
+  (gia' documentati sopra) — pensato per essere copiato come punto di partenza.
 
-## Persistenza
-
-Tutti i config di scenario in questo albero (root, `febrl/*`, `dblp_scholar/*`,
-`ncvoters_naumann/*`, più i due demo in `examples/`) usano `persistence.enabled:false` +
-`csvOutputPath: "<algoritmo>_debug_output.csv"` — nessun database richiesto per eseguirli. Attenzione:
-più dataset che usano lo stesso algoritmo condividono lo stesso nome di file di default (es.
-`mcl_debug_output.csv` sia per NCVR root sia per `febrl2_dirty`/`febrl3_dirty`/`ncvoters_naumann`) —
-limite preesistente nel repo, non introdotto da questa riorganizzazione: sposta/rinomina il CSV tra
-un run e l'altro se vuoi conservarli.
-
-**Eccezione**: `examples/full_reference.json` resta con `persistence.enabled:true` + `database`
-popolati — è l'unico file pensato come documentazione completa di *tutti* i campi validi, quel
-campo incluso. Vedi quel file per lo schema JSON completo con un commento `_<campo>` per ciascuna
-chiave.
+Nota: `mvn exec:java -Dexec.args="src/main/resources/config/mscd_ap.json"` avvia la Linkage Unit con
+uno di questi file. Il processo resta in ascolto passivo (`primat/lu/config`) finche' la SMU non
+spinge un run — vedi `TESTING.md` alla radice del repo per il flusso end-to-end.

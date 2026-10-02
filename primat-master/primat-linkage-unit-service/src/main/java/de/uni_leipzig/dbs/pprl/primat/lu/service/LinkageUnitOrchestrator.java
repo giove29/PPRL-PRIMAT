@@ -29,7 +29,6 @@ import org.eclipse.paho.client.mqttv3.MqttException;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -58,7 +57,6 @@ import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttTopics;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.BrokerCheckRequest;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.LuBrokerPush;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.LuConfigPush;
-import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.PartyPush;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.RbfCodec;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.RbfPayload;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.StartCommand;
@@ -157,46 +155,6 @@ public class LinkageUnitOrchestrator {
 	}
 
 	/**
-	 * Confronta il roster attualmente configurato con quello appena spinto
-	 * dalla SMU (nome + clean/dirty, ordine irrilevante): usato da {@link
-	 * #handleLuConfigPush} per decidere se serve riconfigurarsi a caldo,
-	 * mirror del confronto gia' implicito nel semplice {@code !=} usato per
-	 * {@code rbfSize}.
-	 */
-	private static boolean samePartyRoster(List<Party> current, List<PartyPush> pushed) {
-		if (current.size() != pushed.size()) {
-			return false;
-		}
-		final Map<String, Boolean> currentByName = current.stream()
-				.collect(Collectors.toMap(Party::getName, Party::isDuplicateFree));
-		for (final PartyPush party : pushed) {
-			final Boolean duplicateFree = currentByName.get(party.getName());
-			if (duplicateFree == null || duplicateFree != party.isDuplicateFree()) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	/**
-	 * Converte il roster spinto dalla SMU nella stessa forma JSON gia' attesa
-	 * dal campo {@code parties} del file locale ({@code PartyJsonConfig}:
-	 * {@code {"name":..., "duplicateFree":...}}), cosi' da poterlo scrivere
-	 * nel {@link JsonObject} temporaneo e farlo validare/ricaricare da {@link
-	 * LinkageUnitConfigLoader#load} come qualunque altro campo.
-	 */
-	private static JsonArray partyRosterToJson(List<PartyPush> parties) {
-		final JsonArray array = new JsonArray();
-		for (final PartyPush party : parties) {
-			final JsonObject partyJson = new JsonObject();
-			partyJson.addProperty("name", party.getName());
-			partyJson.addProperty("duplicateFree", party.isDuplicateFree());
-			array.add(partyJson);
-		}
-		return array;
-	}
-
-	/**
 	 * Connette il client orchestratore al broker esterno (da avviare prima) e
 	 * si sottoscrive al topic di configurazione run della SMU, qualunque sia
 	 * la modalita' di soglia configurata localmente: ogni {@link
@@ -254,69 +212,51 @@ public class LinkageUnitOrchestrator {
 
 	/**
 	 * Gestisce una {@link LuConfigPush} ricevuta dalla SMU (protocollo
-	 * StartCommand, fase 2): se {@code rbfSize} e/o il roster dei party
-	 * (nome + clean/dirty, {@link #samePartyRoster}) attesi dalla SMU
-	 * differiscono da quelli attualmente configurati (es. la SMU ha appena
-	 * rilevato un hardening XOR-fold lato Data Owner non ancora riflesso nel
-	 * JSON locale, o un party e' stato aggiunto/cambiato natura), si
-	 * riconfigura a caldo persistendo i nuovi valori sul file JSON locale
-	 * (write-temp/valida/sostituisci, stesso pattern di {@code
-	 * DataOwnerService.handleConfigPush}) prima di applicarli in memoria
-	 * ({@link LinkageUnitConfig#setRbfSize}, {@link
-	 * LinkageUnitConfig#setParties}) e ristampa la propria configurazione
-	 * aggiornata. La validazione (via {@link LinkageUnitConfigLoader#load})
-	 * include automaticamente la compatibilita' del nuovo roster con il
-	 * {@code clusteringMethod} **locale** (mai spinto dalla SMU: la scelta
-	 * dell'algoritmo resta solo da JSON) — un roster incompatibile (es. una
-	 * party clean per una config MCL) o una persistenza fallita fanno
-	 * fallire la riconfigurazione e il run non parte (ack di errore alla
-	 * SMU). Altrimenti pubblica l'ack su {@link
-	 * MqttTopics#luConfigAckTopic()} ed esegue il run: un singolo dispatch
-	 * ({@link #executeRun}) per soglia fissa/{@code auto}/{@code
-	 * auto_precision}/{@code auto_recall}, oppure lo sweep multi-soglia
-	 * ({@link #executeRangeRun}) se {@code similarityThreshold: "range"} —
-	 * questo e' l'UNICO punto di ingresso per qualunque run della Linkage
-	 * Unit, qualunque sia la modalita' di soglia configurata localmente: la
-	 * Linkage Unit non avvia mai un run di propria iniziativa. Pubblica
-	 * l'esito finale (successo o errore — es. digest non corrispondente,
-	 * matching fallito) su {@link MqttTopics#luRunStatusTopic()}. In ogni
-	 * caso (successo o errore) il thread torna libero per il run successivo,
-	 * il client resta connesso e in ascolto.
+	 * StartCommand, fase 2): roster di party e {@code rbfSize} non sono mai
+	 * letti da un JSON locale (dal 2026-10-02 non esistono piu' come campi
+	 * JSON, vedi {@link LinkageUnitConfig}) — arrivano **solo** da qui, puro
+	 * stato in memoria valido per la sola durata di questo run. Valida subito
+	 * il roster contro il {@code clusteringMethod} **locale** (mai spinto
+	 * dalla SMU: la scelta dell'algoritmo resta solo da JSON, vedi {@link
+	 * LinkageUnitConfigLoader#resolvePartyRoster}) e il {@code rbfSize} (vedi
+	 * {@link LinkageUnitConfigLoader#validateRbfSize}): se uno dei due e'
+	 * invalido (es. una party clean per una config MCL), pubblica un ack
+	 * {@code "ERROR"} su {@link MqttTopics#luConfigAckTopic()} e il run non
+	 * parte — nessuno stato applicato, nessun file toccato (non ce n'e' uno
+	 * da toccare). Se validi: li applica in memoria ({@link
+	 * LinkageUnitConfig#setParties}/{@link LinkageUnitConfig#setRbfSize}), li
+	 * **stampa esplicitamente a schermo**, pubblica l'ack {@code "OK"} ed
+	 * esegue il run: un singolo dispatch ({@link #executeRun}) per soglia
+	 * fissa/{@code auto}/{@code auto_precision}/{@code auto_recall}, oppure
+	 * lo sweep multi-soglia ({@link #executeRangeRun}) se {@code
+	 * similarityThreshold: "range"} — questo e' l'UNICO punto di ingresso per
+	 * qualunque run della Linkage Unit, qualunque sia la modalita' di soglia
+	 * configurata localmente: la Linkage Unit non avvia mai un run di propria
+	 * iniziativa. Pubblica l'esito finale (successo o errore — es. digest non
+	 * corrispondente, matching fallito) su {@link
+	 * MqttTopics#luRunStatusTopic()}. **In ogni caso, successo o errore**, il
+	 * {@code finally} dimentica il roster e il rbfSize appena usati
+	 * (`setParties(List.of())`/`setRbfSize(0)`) prima di tornare libera per
+	 * il run successivo, che dovra' ripartire da un nuovo push della SMU —
+	 * nessuno stato di configurazione sopravvive a un run.
 	 */
 	private void handleLuConfigPush(LuConfigPush push) {
 		final String runId = push.getRunId();
-		System.out.println("run " + runId + ": configurazione ricevuta dalla SMU (rbfSize atteso "
-				+ push.getRbfSize() + ", " + push.getParties().size() + " party)");
-		if (push.getRbfSize() != config.getRbfSize() || !samePartyRoster(config.getParties(), push.getParties())) {
-			System.out.println("run " + runId + ": rbfSize e/o roster party attesi dalla SMU diversi da quelli "
-					+ "attualmente configurati, riconfigurazione in corso...");
-			final Path tempPath = configPath.resolveSibling(configPath.getFileName() + ".tmp");
-			try {
-				final JsonObject current = JsonParser
-						.parseString(Files.readString(configPath, StandardCharsets.UTF_8)).getAsJsonObject();
-				current.addProperty("rbfSize", push.getRbfSize());
-				current.add("parties", partyRosterToJson(push.getParties()));
-				Files.writeString(tempPath, fileGson.toJson(current), StandardCharsets.UTF_8);
-
-				// Valida l'intero file (non solo i campi appena cambiati), stesso
-				// principio del Data Owner: un JSON locale nel frattempo corrotto per
-				// altri motivi, o un roster incompatibile con il clusteringMethod
-				// locale (letto dallo stesso file, MAI spinto dalla SMU: la scelta
-				// dell'algoritmo resta solo da JSON), emergono qui — prima di essere
-				// applicati e prima dell'ack di configurazione — invece di scoprirsi
-				// solo a run gia' iniziato.
-				final LinkageUnitConfig reloaded = LinkageUnitConfigLoader.load(tempPath);
-				Files.move(tempPath, configPath, StandardCopyOption.REPLACE_EXISTING);
-				config.setRbfSize(reloaded.getRbfSize());
-				config.setParties(reloaded.getParties());
-			} catch (IOException | LinkageUnitConfigException | RuntimeException e) {
-				deleteQuietly(tempPath);
-				publishLuStatusQuietly(MqttTopics.luConfigAckTopic(), runId, "ERROR",
-						"impossibile applicare la configurazione (rbfSize " + push.getRbfSize() + ", "
-								+ push.getParties().size() + " party): " + e.getMessage());
-				return;
-			}
-			System.out.println(config.describe());
+		final List<Party> parties;
+		try {
+			parties = LinkageUnitConfigLoader.resolvePartyRoster(push.getParties(), config.getClusteringMethod());
+			LinkageUnitConfigLoader.validateRbfSize(push.getRbfSize());
+		} catch (LinkageUnitConfigException e) {
+			publishLuStatusQuietly(MqttTopics.luConfigAckTopic(), runId, "ERROR",
+					"configurazione rifiutata: " + e.getMessage());
+			return;
+		}
+		config.setParties(parties);
+		config.setRbfSize(push.getRbfSize());
+		System.out.println("run " + runId + ": configurazione accettata dalla SMU - rbfSize=" + push.getRbfSize()
+				+ " bit, party:");
+		for (final Party party : parties) {
+			System.out.println("  - " + party.getName() + " [duplicateFree=" + party.isDuplicateFree() + "]");
 		}
 		try {
 			publishLuStatus(MqttTopics.luConfigAckTopic(), runId, "OK", "configurazione run accettata");
@@ -349,6 +289,9 @@ public class LinkageUnitOrchestrator {
 			System.err.println("run " + runId + ": errore ->");
 			e.printStackTrace();
 			publishLuStatusQuietly(MqttTopics.luRunStatusTopic(), runId, "ERROR", e.getMessage());
+		} finally {
+			config.setParties(List.of());
+			config.setRbfSize(0);
 		}
 	}
 

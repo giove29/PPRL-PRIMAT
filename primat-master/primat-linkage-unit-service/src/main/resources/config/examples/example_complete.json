@@ -1,0 +1,40 @@
+{
+  "_note": "Esempio di configurazione completa 'realistica' della Linkage Unit: tutti i campi generali/di orchestrazione (broker, soglia, blocking, timeout MQTT, strategia di clustering del Link Table, persistenza, database), ma SENZA i blocchi di tuning specifici per algoritmo (mscdAp/centerClustering/mcl/globalGreedy/clip) - quelli sono gia' documentati nei 5 file canonici alla radice di questa cartella e in full_reference.json; qui restano ai loro default interni. Nessun 'parties'/'rbfSize': dal 2026-10-02 sono campi puramente runtime, spinti dalla SMU ad ogni avvio di run (protocollo StartCommand) e dimenticati dalla Linkage Unit subito dopo il calcolo - vedi README.md in questa cartella.",
+
+  "mqttBrokerUrl": "tcp://localhost:1883",
+
+  "debug": true,
+
+  "clusteringMethod": "GLOBAL_GREEDY",
+
+  "similarityThreshold": "auto",
+
+  "blocking": {
+    "jaccardLsh": {
+      "keySize": 8,
+      "keys": 20,
+      "seed": 42
+    }
+  },
+
+  "mqtt": {
+    "brokerConnectTimeoutSeconds": 30,
+    "rbfCollectionTimeoutSeconds": 30,
+    "rbfRepublishIntervalSeconds": 15
+  },
+
+  "cluster": {
+    "blockingKeyStrategy": "UNION",
+    "representantStrategy": "RETAIN_FIRST"
+  },
+
+  "persistence": {
+    "enabled": true
+  },
+
+  "database": {
+    "url": "jdbc:postgresql://localhost:5432/primat_global_greedy",
+    "user": "primat",
+    "password": "primat"
+  }
+}

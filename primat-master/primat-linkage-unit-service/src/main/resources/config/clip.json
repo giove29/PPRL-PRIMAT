@@ -1,14 +1,8 @@
 {
   "mqttBrokerUrl": "tcp://localhost:1883",
   "debug": true,
-  "parties": [
-    { "name": "A", "duplicateFree": true },
-    { "name": "B", "duplicateFree": true },
-    { "name": "C", "duplicateFree": true }
-  ],
   "clusteringMethod": "CLIP",
   "similarityThreshold": 0.75,
-  "rbfSize": 1024,
   "blocking": {
     "jaccardLsh": {
       "keySize": 8,

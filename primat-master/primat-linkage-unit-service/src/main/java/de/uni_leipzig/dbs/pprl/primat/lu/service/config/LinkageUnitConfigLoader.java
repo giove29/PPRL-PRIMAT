@@ -32,6 +32,7 @@ import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.global_greedy.data_struc
 import de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.markov_clustering.data_structures.MclConfig;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.LinkageUnitConfig;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.LinkageUnitOrchestrator;
+import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.PartyPush;
 
 /**
  * Legge e valida il JSON di configurazione della Linkage Unit, producendo un
@@ -77,38 +78,10 @@ public final class LinkageUnitConfigLoader {
 		final LinkageUnitJsonConfig raw = parseJson(json, jsonPath);
 
 		validateTopLevel(raw, jsonPath);
-		final List<Party> parties = resolveParties(raw.getParties(), jsonPath);
 		final ClusteringMethod method = raw.getClusteringMethod();
-
-		if (parties.size() == 1 && parties.get(0).isDuplicateFree()) {
-			throw new LinkageUnitConfigException(
-					"un'unica sorgente 'duplicateFree=true' non ha nulla da deduplicare e nessuna seconda sorgente "
-							+ "con cui essere confrontata (il ground truth sarebbe sempre 0 e ogni record "
-							+ "resterebbe un cluster singleton) in " + jsonPath
-							+ ". Per la deduplicazione imposta 'duplicateFree: false'; per il linkage servono "
-							+ "almeno due party.");
-		}
-		if (method == ClusteringMethod.MSCD_AP && !LinkageUnitOrchestrator.anyPartyDuplicateFree(parties)) {
-			throw new LinkageUnitConfigException(
-					"'clusteringMethod' e' MSCD_AP ma nessuna party ha 'duplicateFree=true' in " + jsonPath);
-		}
-		if ((method == ClusteringMethod.MCL || method == ClusteringMethod.CENTER_CLUSTERING)
-				&& LinkageUnitOrchestrator.anyPartyDuplicateFree(parties)) {
-			throw new LinkageUnitConfigException(
-					"'clusteringMethod' e' " + method + " ma alcune party hanno 'duplicateFree=true' in " + jsonPath
-							+ " (" + method + " accetta solo sorgenti dirty: 'duplicateFree: false' per tutte le party)");
-		}
-		if ((method == ClusteringMethod.GLOBAL_GREEDY || method == ClusteringMethod.CLIP)
-				&& !LinkageUnitOrchestrator.allPartiesDuplicateFree(parties)) {
-			throw new LinkageUnitConfigException(
-					"'clusteringMethod' e' " + method + " ma non tutte le party hanno 'duplicateFree=true' in "
-							+ jsonPath
-							+ " (il vincolo source-consistency e' corretto solo se nessuna sorgente ha duplicati interni)");
-		}
 
 		final SimilarityThresholdSpec similarityThreshold = resolveSimilarityThreshold(raw.getSimilarityThreshold(),
 				raw.getAutoThreshold(), raw.getRange(), jsonPath);
-		final int rbfSize = resolveRbfSize(raw.getRbfSize(), jsonPath);
 		final int[] lsh = resolveLsh(raw.getBlocking(), jsonPath);
 		final JaccardLshJsonConfig jaccardLsh = raw.getBlocking() != null ? raw.getBlocking().getJaccardLsh() : null;
 		final long lshSeed = jaccardLsh != null && jaccardLsh.getSeed() != null ? jaccardLsh.getSeed()
@@ -143,7 +116,7 @@ public final class LinkageUnitConfigLoader {
 		final GlobalGreedyConfig globalGreedyConfig = resolveGlobalGreedyConfig(raw.getGlobalGreedy());
 		final ClipConfig clipConfig = resolveClipConfig(raw.getClip());
 
-		return new LinkageUnitConfig(parties, method, similarityThreshold, rbfSize, lsh[0], lsh[1],
+		return new LinkageUnitConfig(method, similarityThreshold, lsh[0], lsh[1],
 				lshSeed, mqttBrokerUrl, brokerConnectTimeoutSeconds, rbfCollectionTimeoutSeconds, rbfRepublishIntervalSeconds, clusterFactory,
 				persistenceEnabled, csvOutputPath, centerClusteringConfig, apConfig, mclConfig,
 				globalGreedyConfig, clipConfig, dbParams[0], dbParams[1], dbParams[2], dbParams[3],
@@ -181,28 +154,88 @@ public final class LinkageUnitConfigLoader {
 		if (raw.getMqttBrokerUrl() == null || raw.getMqttBrokerUrl().isBlank()) {
 			throw new LinkageUnitConfigException("Campo obbligatorio 'mqttBrokerUrl' mancante o vuoto in " + jsonPath);
 		}
-		if (raw.getParties() == null || raw.getParties().isEmpty()) {
-			throw new LinkageUnitConfigException("Campo obbligatorio 'parties' mancante o vuoto in " + jsonPath);
-		}
 		if (raw.getClusteringMethod() == null) {
 			throw new LinkageUnitConfigException("Campo obbligatorio 'clusteringMethod' mancante in " + jsonPath);
 		}
 	}
 
-	private static List<Party> resolveParties(List<PartyJsonConfig> rawParties, Path jsonPath)
+	/**
+	 * Risolve e valida il roster di party spinto dalla SMU insieme a {@code
+	 * rbfSize} (protocollo StartCommand, fase 2), prima di ogni run — mai piu'
+	 * letto da un JSON locale (vedi {@link LinkageUnitJsonConfig}, che dal
+	 * 2026-10-02 non ha piu' un campo {@code parties}). Stessa identica logica
+	 * gia' in vigore quando il roster era ancora parte del file: nome
+	 * mancante/vuoto o duplicato (case-insensitive) → errore; poi la
+	 * compatibilita' con {@code method} (il {@code clusteringMethod}
+	 * **locale** della Linkage Unit, mai spinto dalla SMU): una sola party
+	 * clean non ha nulla da deduplicare; {@code MSCD_AP} richiede almeno una
+	 * party clean; {@code MCL}/{@code CENTER_CLUSTERING} accettano solo party
+	 * dirty; {@code GLOBAL_GREEDY}/{@code CLIP} accettano solo party clean.
+	 *
+	 * @param pushed roster cosi' come ricevuto nel {@code LuConfigPush}
+	 * @param method {@code clusteringMethod} configurato localmente
+	 * @return il roster risolto, pronto per {@link LinkageUnitConfig#setParties}
+	 * @throws LinkageUnitConfigException se il roster e' vuoto/malformato o
+	 *                                     incompatibile con {@code method}
+	 */
+	public static List<Party> resolvePartyRoster(List<PartyPush> pushed, ClusteringMethod method)
 			throws LinkageUnitConfigException {
+		if (pushed == null || pushed.isEmpty()) {
+			throw new LinkageUnitConfigException("Roster di party vuoto nella configurazione spinta dalla SMU");
+		}
 		final Set<String> seenNames = new HashSet<>();
 		final List<Party> parties = new ArrayList<>();
-		for (final PartyJsonConfig rawParty : rawParties) {
+		for (final PartyPush rawParty : pushed) {
 			if (rawParty.getName() == null || rawParty.getName().isBlank()) {
-				throw new LinkageUnitConfigException("Party con 'name' mancante o vuoto in " + jsonPath);
+				throw new LinkageUnitConfigException("Party con 'name' mancante o vuoto nel roster spinto dalla SMU");
 			}
 			if (!seenNames.add(rawParty.getName().toUpperCase())) {
-				throw new LinkageUnitConfigException("Nome di party duplicato: " + rawParty.getName() + " in " + jsonPath);
+				throw new LinkageUnitConfigException(
+						"Nome di party duplicato nel roster spinto dalla SMU: " + rawParty.getName());
 			}
-			parties.add(new Party(rawParty.getName(), rawParty.isDuplicateFreeOrDefault()));
+			parties.add(new Party(rawParty.getName(), rawParty.isDuplicateFree()));
+		}
+
+		if (parties.size() == 1 && parties.get(0).isDuplicateFree()) {
+			throw new LinkageUnitConfigException(
+					"un'unica sorgente 'duplicateFree=true' non ha nulla da deduplicare e nessuna seconda sorgente "
+							+ "con cui essere confrontata (il ground truth sarebbe sempre 0 e ogni record "
+							+ "resterebbe un cluster singleton). Per la deduplicazione la party deve essere dirty; "
+							+ "per il linkage servono almeno due party.");
+		}
+		if (method == ClusteringMethod.MSCD_AP && !LinkageUnitOrchestrator.anyPartyDuplicateFree(parties)) {
+			throw new LinkageUnitConfigException(
+					"'clusteringMethod' locale e' MSCD_AP ma nessuna party nel roster spinto dalla SMU e' clean "
+							+ "(duplicateFree=true)");
+		}
+		if ((method == ClusteringMethod.MCL || method == ClusteringMethod.CENTER_CLUSTERING)
+				&& LinkageUnitOrchestrator.anyPartyDuplicateFree(parties)) {
+			throw new LinkageUnitConfigException(
+					"'clusteringMethod' locale e' " + method + " ma alcune party nel roster spinto dalla SMU sono "
+							+ "clean (" + method + " accetta solo sorgenti dirty)");
+		}
+		if ((method == ClusteringMethod.GLOBAL_GREEDY || method == ClusteringMethod.CLIP)
+				&& !LinkageUnitOrchestrator.allPartiesDuplicateFree(parties)) {
+			throw new LinkageUnitConfigException(
+					"'clusteringMethod' locale e' " + method + " ma non tutte le party nel roster spinto dalla SMU "
+							+ "sono clean (il vincolo source-consistency e' corretto solo se nessuna sorgente ha "
+							+ "duplicati interni)");
 		}
 		return parties;
+	}
+
+	/**
+	 * Valida {@code rbfSize} spinto dalla SMU insieme al roster di party
+	 * (protocollo StartCommand, fase 2) — mai piu' letto da un JSON locale.
+	 * Stessa regola gia' in vigore quando il campo era ancora parte del file.
+	 *
+	 * @throws LinkageUnitConfigException se non positivo
+	 */
+	public static void validateRbfSize(int rbfSize) throws LinkageUnitConfigException {
+		if (rbfSize <= 0) {
+			throw new LinkageUnitConfigException(
+					"'rbfSize' spinto dalla SMU deve essere positivo, trovato " + rbfSize);
+		}
 	}
 
 	/**
@@ -308,16 +341,6 @@ public final class LinkageUnitConfigLoader {
 	 *         MinHash nel blocking, vedi {@link #resolveLsh}), spinta dalla SMU
 	 *         e non piu' riportata/incrociata coi singoli Data Owner.
 	 */
-	private static int resolveRbfSize(Integer rbfSize, Path jsonPath) throws LinkageUnitConfigException {
-		if (rbfSize == null) {
-			throw new LinkageUnitConfigException("Campo obbligatorio 'rbfSize' mancante in " + jsonPath);
-		}
-		if (rbfSize <= 0) {
-			throw new LinkageUnitConfigException("'rbfSize' deve essere positivo, trovato " + rbfSize + " in " + jsonPath);
-		}
-		return rbfSize;
-	}
-
 	/** @return {@code [keySize, keys]}, gia' validati positivi. */
 	private static int[] resolveLsh(BlockingJsonConfig blocking, Path jsonPath)
 			throws LinkageUnitConfigException {

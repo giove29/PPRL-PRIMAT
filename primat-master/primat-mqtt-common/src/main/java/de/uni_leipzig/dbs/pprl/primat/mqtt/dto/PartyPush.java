@@ -7,9 +7,9 @@ package de.uni_leipzig.dbs.pprl.primat.mqtt.dto;
 /**
  * Elemento del roster di party incluso in {@link LuConfigPush}: nome e tipo
  * (clean/dirty) di un Data Owner atteso per il run, cosi' come noti alla SMU.
- * Mirror minimale, nel modulo wire-format (che non dipende da
- * primat-linkage-unit-service), della forma gia' usata lato Linkage Unit per
- * dichiarare i propri party nel JSON locale ({@code PartyJsonConfig}).
+ * Dal 2026-10-02 e' l'UNICA fonte di questa informazione per la Linkage Unit
+ * (nessun campo {@code parties} resta nel suo JSON locale): validato ad ogni
+ * push da {@code LinkageUnitConfigLoader#resolvePartyRoster}.
  */
 public class PartyPush {
 

@@ -165,7 +165,7 @@ def party_duplicate_free(party):
     """Letto fresco da do_<party>.json (stesso file gia' letto da
     build_config_push), mai cachato: 'duplicateFree' assente equivale a
     dirty (False), stessa convenzione gia' usata lato Linkage Unit
-    (PartyJsonConfig.isDuplicateFreeOrDefault())."""
+    (PartyPush.isDuplicateFree(), default false se omesso sul wire)."""
     return bool(_load_json(_do_schema_path(party)).get("duplicateFree", False))
 
 

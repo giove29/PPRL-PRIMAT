@@ -4,24 +4,24 @@
  */
 package de.uni_leipzig.dbs.pprl.primat.lu.service.config;
 
-import java.util.List;
-
 import com.google.gson.JsonElement;
 
 /**
  * DTO grezzo 1:1 del JSON di configurazione della Linkage Unit, popolato da
  * Gson per riflessione (nessuna validazione qui, tutta in
  * {@link LinkageUnitConfigLoader}). Mirror di {@code DataOwnerJsonConfig}.
+ * Nessun campo {@code parties}/{@code rbfSize}: dal 2026-10-02 sono puramente
+ * runtime, spinti dalla SMU ad ogni run via {@code LuConfigPush} (si veda
+ * {@code LinkageUnitConfigLoader#resolvePartyRoster}/{@code #validateRbfSize}),
+ * mai letti dal JSON locale.
  */
 public class LinkageUnitJsonConfig {
 
 	private String mqttBrokerUrl;
-	private List<PartyJsonConfig> parties;
 	private ClusteringMethod clusteringMethod;
 	private JsonElement similarityThreshold;
 	private AutoThresholdJsonConfig autoThreshold;
 	private RangeJsonConfig range;
-	private Integer rbfSize;
 	private BlockingJsonConfig blocking;
 	private MqttJsonConfig mqtt;
 	private ClusterJsonConfig cluster;
@@ -36,10 +36,6 @@ public class LinkageUnitJsonConfig {
 
 	public String getMqttBrokerUrl() {
 		return mqttBrokerUrl;
-	}
-
-	public List<PartyJsonConfig> getParties() {
-		return parties;
 	}
 
 	public ClusteringMethod getClusteringMethod() {
@@ -58,11 +54,6 @@ public class LinkageUnitJsonConfig {
 	/** @return sezione {@code range} (ammessa solo con {@code similarityThreshold: "range"}), {@code null} se assente. */
 	public RangeJsonConfig getRange() {
 		return range;
-	}
-
-	/** @return dimensione attesa dell'RBF in bit (informativa, es. per verificare la coerenza con l'XOR-Folding lato Data Owner), {@code null} se non impostata. */
-	public Integer getRbfSize() {
-		return rbfSize;
 	}
 
 	public BlockingJsonConfig getBlocking() {

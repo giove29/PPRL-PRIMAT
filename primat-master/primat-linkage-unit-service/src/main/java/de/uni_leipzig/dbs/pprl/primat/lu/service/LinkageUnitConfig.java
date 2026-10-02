@@ -57,7 +57,13 @@ public class LinkageUnitConfig {
 	/**
 	 * Costruito esclusivamente da {@link LinkageUnitConfigLoader} dopo la
 	 * validazione del JSON: nessun controllo aggiuntivo viene fatto qui,
-	 * questa classe e' altrimenti un semplice contenitore immutabile.
+	 * questa classe e' altrimenti un semplice contenitore. {@code parties}
+	 * (roster) e {@code rbfSize} NON sono parametri del costruttore: dal
+	 * 2026-10-02 sono campi puramente runtime, mai letti dal JSON locale —
+	 * inizializzati qui a vuoto/0 ("non ancora configurato") e popolati solo
+	 * da {@link #setParties}/{@link #setRbfSize} ad ogni {@code LuConfigPush}
+	 * della SMU, poi azzerati di nuovo da {@code LinkageUnitOrchestrator}
+	 * subito dopo ogni run.
 	 *
 	 * @param dbPersistenceUnitName nome della persistence-unit dedicata alla
 	 *                              strategia scelta, {@code null} se
@@ -66,16 +72,16 @@ public class LinkageUnitConfig {
 	 * @param dbUser                utente del DB dedicato, {@code null} se MCL
 	 * @param dbPassword            password del DB dedicato, {@code null} se MCL
 	 */
-	public LinkageUnitConfig(List<Party> parties, ClusteringMethod clusteringMethod, SimilarityThresholdSpec thresholdSpec,
-			int rbfSize, int lshKeySize, int lshKeys, long lshSeed, String mqttBrokerUrl,
+	public LinkageUnitConfig(ClusteringMethod clusteringMethod, SimilarityThresholdSpec thresholdSpec,
+			int lshKeySize, int lshKeys, long lshSeed, String mqttBrokerUrl,
 			long brokerConnectTimeoutSeconds, long rbfCollectionTimeoutSeconds, long rbfRepublishIntervalSeconds, ClusterFactory clusterFactory,
 			boolean persistenceEnabled, String csvOutputPath, CenterClusteringConfig centerClusteringConfig,
 			ApConfig apConfig, MclConfig mclConfig, GlobalGreedyConfig globalGreedyConfig, ClipConfig clipConfig,
 			String dbPersistenceUnitName, String dbUrl, String dbUser, String dbPassword, boolean debug) {
-		this.parties = parties;
+		this.parties = List.of();
 		this.clusteringMethod = clusteringMethod;
 		this.thresholdSpec = thresholdSpec;
-		this.rbfSize = rbfSize;
+		this.rbfSize = 0;
 		this.lshKeySize = lshKeySize;
 		this.lshKeys = lshKeys;
 		this.lshSeed = lshSeed;
@@ -103,19 +109,21 @@ public class LinkageUnitConfig {
 		return debug;
 	}
 
+	/** @return il roster corrente (nomi + clean/dirty), vuoto se nessun run e' in corso (vedi {@link #setParties}). */
 	public List<Party> getParties() {
 		return parties;
 	}
 
 	/**
-	 * Riconfigura a caldo il roster dei party (nomi + clean/dirty),
+	 * Imposta il roster dei party (nomi + clean/dirty) per il run in corso,
 	 * sostituendo l'intera lista per riferimento (mai una mutazione in-place,
 	 * cosi' un {@code executeRun}/{@code waitForRbf} gia' in corso non vede
-	 * mai uno stato a meta'): usato da {@code
-	 * LinkageUnitOrchestrator#handleLuConfigPush} quando la SMU comunica un
-	 * roster diverso da quello attualmente configurato — mirror di {@link
-	 * #setRbfSize}, stesso principio ("la SMU resta l'unica fonte di verita'
-	 * per un run in corso, il JSON locale e' solo il valore di partenza").
+	 * mai uno stato a meta'): chiamato da {@code
+	 * LinkageUnitOrchestrator#handleLuConfigPush} con il roster appena
+	 * validato da {@code LinkageUnitConfigLoader#resolvePartyRoster} contro
+	 * ogni nuovo {@code LuConfigPush} della SMU, e azzerato di nuovo (lista
+	 * vuota) subito dopo la fine del run — mai letto da un JSON locale, mai
+	 * persistito, mai valido oltre la durata di un singolo run.
 	 */
 	public void setParties(List<Party> parties) {
 		this.parties = parties;
@@ -136,25 +144,23 @@ public class LinkageUnitConfig {
 	}
 
 	/**
-	 * @return dimensione autorevole dell'RBF in bit: unica fonte di verita' per
-	 *         il blocking (vedi {@code LinkageUnitOrchestrator}, che la usa
-	 *         direttamente al posto del vecchio {@code valueRange}) — obbligatoria,
-	 *         validata da {@code LinkageUnitConfigLoader}.
+	 * @return dimensione autorevole dell'RBF in bit per il run in corso: unica
+	 *         fonte di verita' per il blocking (vedi {@code
+	 *         LinkageUnitOrchestrator}, che la usa direttamente come {@code
+	 *         valueRange} del generatore di chiavi LSH); {@code 0} se nessun
+	 *         run e' in corso (vedi {@link #setRbfSize}).
 	 */
 	public int getRbfSize() {
 		return rbfSize;
 	}
 
 	/**
-	 * Riconfigura a caldo la dimensione autorevole dell'RBF, sovrascrivendo il
-	 * valore caricato dal JSON locale: usato da {@code
-	 * LinkageUnitOrchestrator#handleLuConfigPush} quando la SMU comunica un
-	 * {@code rbfSize} diverso (es. dopo l'attivazione di un hardening XOR-fold
-	 * lato Data Owner) — la SMU resta l'unica fonte di verità per un run in
-	 * corso, il JSON locale è solo il valore di partenza. Rimane in vigore
-	 * anche per i run successivi nello stesso processo (mai persistito su
-	 * disco), mirror del comportamento di {@code DataOwnerService} su un
-	 * {@code ConfigPush}.
+	 * Imposta la dimensione autorevole dell'RBF per il run in corso: chiamato
+	 * da {@code LinkageUnitOrchestrator#handleLuConfigPush} con il valore
+	 * appena validato da {@code LinkageUnitConfigLoader#validateRbfSize}
+	 * contro ogni nuovo {@code LuConfigPush} della SMU, e azzerato di nuovo
+	 * ({@code 0}) subito dopo la fine del run — mai letto da un JSON locale,
+	 * mai persistito, mai valido oltre la durata di un singolo run.
 	 */
 	public void setRbfSize(int rbfSize) {
 		this.rbfSize = rbfSize;
@@ -253,11 +259,15 @@ public class LinkageUnitConfig {
 	}
 
 	/**
-	 * @return riepilogo leggibile dell'intera configurazione ereditata dal JSON
-	 *         (party, strategia, tuning blocking/MQTT, persistenza), pensato per
-	 *         essere stampato a schermo all'avvio della Linkage Unit, mirror di
-	 *         {@code DataOwnerConfig.describe()}. Nessun dato in chiaro dei
-	 *         record, solo tuning/struttura (la password del DB non è incluta).
+	 * @return riepilogo leggibile della configurazione corrente (strategia,
+	 *         tuning blocking/MQTT, persistenza — questi dal JSON locale;
+	 *         party e RBF size invece solo se un run e' in corso, altrimenti
+	 *         vuoto/0: non fanno piu' parte del JSON, arrivano dalla SMU ad
+	 *         ogni push), pensato per essere stampato a schermo sia
+	 *         all'avvio della Linkage Unit sia ad ogni {@code LuConfigPush}
+	 *         ricevuto, mirror di {@code DataOwnerConfig.describe()}. Nessun
+	 *         dato in chiaro dei record, solo tuning/struttura (la password
+	 *         del DB non è inclusa).
 	 */
 	public String describe() {
 		final StringBuilder sb = new StringBuilder();
