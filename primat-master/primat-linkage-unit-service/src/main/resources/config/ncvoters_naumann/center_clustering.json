@@ -6,7 +6,12 @@
     { "name": "B", "duplicateFree": false }
   ],
   "clusteringMethod": "CENTER_CLUSTERING",
-  "similarityThreshold": 0.75,
+  "similarityThreshold": "range",
+  "range": {
+    "from": 0.6,
+    "to": 0.95,
+    "step": 0.05
+  },
   "rbfSize": 1024,
   "blocking": {
     "jaccardLsh": {

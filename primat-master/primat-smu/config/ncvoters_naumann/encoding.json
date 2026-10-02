@@ -5,25 +5,21 @@
     "hardeningChain": []
   },
   "missingValueHandling": {
-    "enabled": true,
+    "enabled": false,
     "anchorPriority": [
-      "first_name", "last_name", "age", "birth_place", "house_num",
-      "midl_name", "race_code", "res_city_desc", "sex_code",
-      "street_name", "zip_code"
+      "last_name", "first_name", "midl_name",
+      "street_name", "sex_code", "birth_place",
+      "res_city_desc"
     ]
   },
   "hmacKey": "SMU_NCVOTERS_NAUMANN_TEST_KEY",
   "columns": {
-    "first_name":    { "hashFunctions": 10, "salt": "FIRST_NAME_",    "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
-    "midl_name":     { "hashFunctions": 10, "salt": "MIDL_NAME_",     "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
-    "last_name":     { "hashFunctions": 10, "salt": "LAST_NAME_",     "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
-    "age":           { "hashFunctions": 10, "salt": "AGE_",           "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
-    "sex_code":      { "hashFunctions": 10, "salt": "SEX_CODE_",      "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
-    "race_code":     { "hashFunctions": 10, "salt": "RACE_CODE_",     "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
-    "res_city_desc": { "hashFunctions": 10, "salt": "RES_CITY_DESC_", "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
+    "first_name":    { "hashFunctions": 20, "salt": "FIRST_NAME_",    "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
+    "midl_name":     { "hashFunctions": 15, "salt": "MIDL_NAME_",     "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
+    "last_name":     { "hashFunctions": 22, "salt": "LAST_NAME_",     "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
+    "sex_code":      { "hashFunctions": 8, "salt": "SEX_CODE_",      "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
+    "res_city_desc": { "hashFunctions": 7, "salt": "RES_CITY_DESC_", "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
     "street_name":   { "hashFunctions": 10, "salt": "STREET_NAME_",   "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
-    "house_num":     { "hashFunctions": 10, "salt": "HOUSE_NUM_",     "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
-    "zip_code":      { "hashFunctions": 10, "salt": "ZIP_CODE_",      "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 },
-    "birth_place":   { "hashFunctions": 10, "salt": "BIRTH_PLACE_",   "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 }
+    "birth_place":   { "hashFunctions": 7, "salt": "BIRTH_PLACE_",   "constantWeightEncoding": { "enabled": false, "minTrigrams": 6, "maxTrigrams": 12 }, "missingValueTokenCount": 6 }
   }
 }

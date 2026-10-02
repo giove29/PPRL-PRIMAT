@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -156,11 +155,11 @@ public class LinkageUnitOrchestrator {
 	}
 
 	/**
-	 * Connette il client orchestratore al broker esterno (da avviare prima) e,
-	 * fuori dalla modalita' di test {@code similarityThreshold: "range"} (vedi
-	 * {@link #runRangeBenchmark()}, che non passa da qui), si sottoscrive al
-	 * topic di configurazione run della SMU: ogni {@link LuConfigPush} viene
-	 * gestita su {@link #runExecutor}, il thread chiamante ritorna subito.
+	 * Connette il client orchestratore al broker esterno (da avviare prima) e
+	 * si sottoscrive al topic di configurazione run della SMU, qualunque sia
+	 * la modalita' di soglia configurata localmente: ogni {@link
+	 * LuConfigPush} viene gestita su {@link #runExecutor}, il thread
+	 * chiamante ritorna subito.
 	 *
 	 * @throws Exception se il broker non e' raggiungibile entro
 	 *                    {@code mqtt.brokerConnectTimeoutSeconds}
@@ -222,12 +221,17 @@ public class LinkageUnitOrchestrator {
 	 * memoria ({@link LinkageUnitConfig#setRbfSize}) e ristampa la propria
 	 * configurazione aggiornata; se la persistenza fallisce il run non parte
 	 * (ack di errore alla SMU). Altrimenti pubblica l'ack su {@link
-	 * MqttTopics#luConfigAckTopic()}, esegue il run ({@link #executeRun}) e
-	 * pubblica l'esito finale (successo o errore — es. digest non
-	 * corrispondente, matching fallito) su {@link
-	 * MqttTopics#luRunStatusTopic()}. In ogni caso (successo o errore) il
-	 * thread torna libero per il run successivo, il client resta connesso e
-	 * in ascolto.
+	 * MqttTopics#luConfigAckTopic()} ed esegue il run: un singolo dispatch
+	 * ({@link #executeRun}) per soglia fissa/{@code auto}/{@code
+	 * auto_precision}/{@code auto_recall}, oppure lo sweep multi-soglia
+	 * ({@link #executeRangeRun}) se {@code similarityThreshold: "range"} —
+	 * questo e' l'UNICO punto di ingresso per qualunque run della Linkage
+	 * Unit, qualunque sia la modalita' di soglia configurata localmente: la
+	 * Linkage Unit non avvia mai un run di propria iniziativa. Pubblica
+	 * l'esito finale (successo o errore — es. digest non corrispondente,
+	 * matching fallito) su {@link MqttTopics#luRunStatusTopic()}. In ogni
+	 * caso (successo o errore) il thread torna libero per il run successivo,
+	 * il client resta connesso e in ascolto.
 	 */
 	private void handleLuConfigPush(LuConfigPush push) {
 		final String runId = push.getRunId();
@@ -266,9 +270,25 @@ public class LinkageUnitOrchestrator {
 			return;
 		}
 		try {
-			final LinkageOutcome outcome = executeRun(runId, push.getExpectedDigest());
-			publishLuStatusQuietly(MqttTopics.luRunStatusTopic(), runId, "OK",
-					outcome.getLinkTable().size() + " cluster prodotti");
+			if (config.getThresholdSpec().isRange()) {
+				final List<RangeIterationResult> results = executeRangeRun(runId, push.getExpectedDigest());
+				double bestF1 = -1d;
+				double bestThreshold = Double.NaN;
+				for (final RangeIterationResult result : results) {
+					if (result.getOutcome().getFMeasure() > bestF1) {
+						bestF1 = result.getOutcome().getFMeasure();
+						bestThreshold = result.getThreshold();
+					}
+				}
+				publishLuStatusQuietly(MqttTopics.luRunStatusTopic(), runId, "OK",
+						results.size() + " soglie testate, migliore F1 " + String.format(Locale.ROOT, "%.3f", bestF1)
+								+ " a soglia " + String.format(Locale.ROOT, "%.2f", bestThreshold));
+			}
+			else {
+				final LinkageOutcome outcome = executeRun(runId, push.getExpectedDigest());
+				publishLuStatusQuietly(MqttTopics.luRunStatusTopic(), runId, "OK",
+						outcome.getLinkTable().size() + " cluster prodotti");
+			}
 		} catch (Exception e) {
 			System.err.println("run " + runId + ": errore ->");
 			e.printStackTrace();
@@ -498,7 +518,7 @@ public class LinkageUnitOrchestrator {
 	/**
 	 * Smista sulla strategia di clustering dichiarata in {@code config}, corpo
 	 * condiviso da {@link #executeRun} (una sola soglia) e
-	 * {@link #runRangeBenchmark()} (una soglia per iterazione). {@code
+	 * {@link #executeRangeRun} (una soglia per iterazione). {@code
 	 * apConfig.addCleanSource(...)} e' idempotente ({@link
 	 * de.uni_leipzig.dbs.pprl.primat.lu.postprocessing.affinity_propagation.data_structures.ApConfig#addCleanSource}
 	 * usa un {@code Set}), quindi e' sicuro richiamare questo metodo piu' volte
@@ -533,7 +553,7 @@ public class LinkageUnitOrchestrator {
 	}
 
 	/**
-	 * Esito di una singola soglia testata da {@link #runRangeBenchmark()}.
+	 * Esito di una singola soglia testata da {@link #executeRangeRun}.
 	 */
 	public static final class RangeIterationResult {
 		private final double threshold;
@@ -563,26 +583,26 @@ public class LinkageUnitOrchestrator {
 	 * cortocircuitato a {@code false} da {@code LinkageUnitConfigLoader}) e non
 	 * viene mai scritto alcun file (ne' CSV della Link Table, ne' CSV/istogramma
 	 * di debug): solo output a schermo, nulla di recuperabile dopo il run.
+	 * Chiamato esclusivamente da {@link #handleLuConfigPush} quando la SMU
+	 * avvia un run su una configurazione a soglia multipla: {@code runId} ed
+	 * {@code expectedDigest} sono quelli comunicati dalla SMU (nessun
+	 * publish di {@code StartCommand} qui, la SMU lo ha gia' fatto per i Data
+	 * Owner prima di questo passo — la Linkage Unit resta un componente
+	 * puramente passivo anche in questa modalita').
 	 *
 	 * @return un {@link RangeIterationResult} per ogni soglia testata, nello
 	 *         stesso ordine di {@code rangeValues()}
 	 * @throws Exception se la raccolta degli RBF va in timeout o la
-	 *                    pubblicazione/sottoscrizione MQTT fallisce
+	 *                    sottoscrizione MQTT fallisce
 	 */
-	public List<RangeIterationResult> runRangeBenchmark() throws Exception {
+	private List<RangeIterationResult> executeRangeRun(String runId, String expectedDigest) throws Exception {
 		final SimilarityThresholdSpec rangeSpec = config.getThresholdSpec();
 		if (!rangeSpec.isRange()) {
-			throw new IllegalStateException("runRangeBenchmark() richiede 'similarityThreshold: \"range\"', questa "
+			throw new IllegalStateException("executeRangeRun() richiede 'similarityThreshold: \"range\"', questa "
 					+ "config ha " + rangeSpec);
 		}
 		final List<Double> thresholds = rangeSpec.rangeValues();
-		final String runId = UUID.randomUUID().toString();
-		// Tool di test da riga di comando, fuori dal protocollo di produzione
-		// guidato dalla SMU: nessuno pubblica un vero StartCommand qui, quindi
-		// questo metodo deve ancora farlo da solo (un solo publish, senza loop di
-		// repubblica) per restare utilizzabile in autonomia.
-		publishStartCommandOnce(runId);
-		final Map<Party, Collection<Record>> input = waitForRbf(runId, null);
+		final Map<Party, Collection<Record>> input = waitForRbf(runId, expectedDigest);
 
 		final LshKeyGenerator keyGenerator = new JaccardLshKeyGenerator(config.getLshKeySize(), config.getLshKeys(),
 				config.getRbfSize(), config.getLshSeed());
@@ -677,37 +697,19 @@ public class LinkageUnitOrchestrator {
 	}
 
 	/**
-	 * Pubblica un {@link StartCommand} una sola volta a tutti i Data Owner
-	 * registrati, senza alcuna repubblica. Usato solo da
-	 * {@link #runRangeBenchmark()} (tool di test da riga di comando, fuori dal
-	 * protocollo di produzione): nella pipeline guidata dalla SMU e' la SMU
-	 * stessa a pubblicare il vero {@code StartCommand} dopo aver ricevuto
-	 * l'ack di {@link #handleLuConfigPush}, la Linkage Unit non comanda mai i
-	 * Data Owner in quel percorso.
-	 */
-	private void publishStartCommandOnce(String runId) throws MqttException {
-		final StartCommand command = new StartCommand(runId, System.currentTimeMillis());
-		for (final Party party : config.getParties()) {
-			client.publish(MqttTopics.commandTopic(party.getName()), gson.toJson(command));
-			System.out.println("  comando pubblicato su " + MqttTopics.commandTopic(party.getName()));
-		}
-	}
-
-	/**
 	 * Attende la raccolta di tutti gli RBF di un run (con timeout, log di
 	 * progresso periodico), senza pubblicare o ripubblicare alcun comando: nel
 	 * protocollo guidato dalla SMU e' la SMU a pubblicare il vero
 	 * {@link StartCommand} ai Data Owner (dopo l'ack di {@link
 	 * #handleLuConfigPush}), la Linkage Unit si limita ad ascoltare.
 	 *
-	 * @param expectedDigest digest di configurazione atteso (comunicato dalla
-	 *                        SMU insieme al {@code runId}): se non {@code
-	 *                        null}, ogni RBF ricevuto con un digest diverso fa
-	 *                        fallire il run. Se {@code null} (solo il path di
-	 *                        test {@link #runRangeBenchmark()}, senza SMU),
-	 *                        resta il solo controllo di consistenza cross-party
-	 *                        preesistente (tutte le sorgenti devono condividere
-	 *                        lo stesso digest tra loro, qualunque esso sia).
+	 * @param expectedDigest digest di configurazione atteso, comunicato dalla
+	 *                        SMU insieme al {@code runId} (mai {@code null}:
+	 *                        qualunque run della Linkage Unit, qualunque sia
+	 *                        la modalita' di soglia, e' sempre innescato da un
+	 *                        {@link LuConfigPush} della SMU che lo fornisce).
+	 *                        Ogni RBF ricevuto con un digest diverso fa
+	 *                        fallire il run.
 	 */
 	private Map<Party, Collection<Record>> waitForRbf(String runId, String expectedDigest) throws Exception {
 		final List<Party> parties = config.getParties();
@@ -739,45 +741,19 @@ public class LinkageUnitOrchestrator {
 					+ receivedByParty.keySet());
 		}
 
-		if (expectedDigest != null) {
-			// Verifica diretta contro il digest comunicato dalla SMU (protocollo
-			// StartCommand): copre sia la coerenza cross-party sia la
-			// corrispondenza con la configurazione gia' confermata in fase di
-			// checkVersion, in un solo controllo.
-			final List<String> mismatched = parties.stream().map(Party::getName)
-					.filter(name -> !expectedDigest.equals(receivedByParty.get(name).getConfigHash()))
-					.collect(Collectors.toList());
-			if (!mismatched.isEmpty()) {
-				throw new IllegalStateException("Digest di configurazione non corrispondente a quello atteso dalla "
-						+ "SMU per i party: " + mismatched);
-			}
-			System.out.println("Digest di configurazione verificato: tutte le " + parties.size()
-					+ " sorgenti corrispondono al digest atteso dalla SMU.");
+		// Verifica diretta contro il digest comunicato dalla SMU (protocollo
+		// StartCommand): copre sia la coerenza cross-party sia la
+		// corrispondenza con la configurazione gia' confermata in fase di
+		// checkVersion, in un solo controllo.
+		final List<String> mismatched = parties.stream().map(Party::getName)
+				.filter(name -> !expectedDigest.equals(receivedByParty.get(name).getConfigHash()))
+				.collect(Collectors.toList());
+		if (!mismatched.isEmpty()) {
+			throw new IllegalStateException("Digest di configurazione non corrispondente a quello atteso dalla "
+					+ "SMU per i party: " + mismatched);
 		}
-		else {
-			// Nessun digest atteso da confrontare (solo il path di test
-			// runRangeBenchmark, senza SMU): resta il controllo di consistenza
-			// cross-party — tutte le sorgenti di questo run devono condividere
-			// esattamente la stessa configurazione di encoding tra loro (stesso
-			// configHash), requisito indispensabile perche' le posizioni di bit
-			// dell'RBF siano comparabili tra party. Blocca l'intero run (mai un
-			// warning).
-			final Map<String, List<String>> partiesByConfigHash = new HashMap<>();
-			for (final Party party : parties) {
-				final String hash = receivedByParty.get(party.getName()).getConfigHash();
-				partiesByConfigHash.computeIfAbsent(hash, h -> new ArrayList<>()).add(party.getName());
-			}
-			if (partiesByConfigHash.size() > 1) {
-				final StringBuilder detail = new StringBuilder();
-				for (final Map.Entry<String, List<String>> entry : partiesByConfigHash.entrySet()) {
-					detail.append("\n  hash ").append(entry.getKey()).append(" -> party ").append(entry.getValue());
-				}
-				throw new IllegalStateException("Le sorgenti di questo run non condividono la stessa configurazione di "
-						+ "encoding (salt/hashFunctions/hardening/CWE devono essere identici su tutte le party perche' "
-						+ "le posizioni di bit dell'RBF siano comparabili):" + detail
-						+ "\nAllinea le configurazioni JSON dei Data Owner coinvolti prima di continuare.");
-			}
-		}
+		System.out.println("Digest di configurazione verificato: tutte le " + parties.size()
+				+ " sorgenti corrispondono al digest atteso dalla SMU.");
 
 		// La lunghezza dell'RBF non e' piu' riportata dal Data Owner (che non la
 		// invia piu' nel payload): config.getRbfSize() e' l'unica fonte di verita',
@@ -900,13 +876,16 @@ public class LinkageUnitOrchestrator {
 
 	/**
 	 * Avvia l'orchestratore come processo standalone: un solo argomento (path
-	 * al JSON di configurazione). Fuori da {@code similarityThreshold: "range"}
-	 * (solo testing, un unico run e poi il processo termina), resta in ascolto
-	 * all'infinito della configurazione di run spinta dalla SMU, potendo
-	 * eseguire piu' run consecutivi senza essere riavviata. Multi-run con
-	 * party diverse (es. rendere dirty una sorgente clean tra un run e
-	 * l'altro) richiede comunque due file JSON e due processi distinti, non
-	 * uno swap in-process.
+	 * al JSON di configurazione). Resta sempre in ascolto all'infinito della
+	 * configurazione di run spinta dalla SMU su {@link
+	 * MqttTopics#luConfigTopic()}, qualunque sia la modalita' di soglia
+	 * configurata localmente (fissa, {@code auto}/{@code auto_precision}/
+	 * {@code auto_recall}, o {@code range}): la Linkage Unit non avvia mai un
+	 * run di propria iniziativa (si veda {@link #handleLuConfigPush} per lo
+	 * smistamento fisso/auto vs range), e puo' eseguire piu' run consecutivi
+	 * senza essere riavviata. Multi-run con party diverse (es. rendere dirty
+	 * una sorgente clean tra un run e l'altro) richiede comunque due file
+	 * JSON e due processi distinti, non uno swap in-process.
 	 *
 	 * @param args {@code configJsonPath}, es.
 	 *             {@code primat-linkage-unit-service/src/main/resources/config/mscd_ap.json}
@@ -933,11 +912,9 @@ public class LinkageUnitOrchestrator {
 
 		final LinkageUnitOrchestrator orchestrator = new LinkageUnitOrchestrator(config, configPath);
 		orchestrator.start();
-		if (config.getThresholdSpec().isRange()) {
-			orchestrator.runRangeBenchmark();
-		}
-		else {
-			orchestrator.awaitForever();
-		}
+		// Qualunque sia la modalita' di soglia (fissa, auto*, o range), la
+		// Linkage Unit resta sempre un componente passivo: il run parte solo
+		// quando la SMU pubblica un LuConfigPush (vedi handleLuConfigPush).
+		orchestrator.awaitForever();
 	}
 }

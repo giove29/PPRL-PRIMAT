@@ -542,7 +542,7 @@ public class MultiSourceLinkage {
 	 * calcolerebbe comunque ad ogni chiamata (non dipende dalla soglia, quindi è
 	 * costante per tutte le iterazioni di un run in modalità {@code "range"}).
 	 * Usata da
-	 * {@link de.uni_leipzig.dbs.pprl.primat.lu.service.LinkageUnitOrchestrator#runRangeBenchmark()}
+	 * {@link de.uni_leipzig.dbs.pprl.primat.lu.service.LinkageUnitOrchestrator#executeRangeRun}
 	 * per stampare questa riga una sola volta, prima del loop sulle soglie,
 	 * invece che dopo la prima iterazione.
 	 */

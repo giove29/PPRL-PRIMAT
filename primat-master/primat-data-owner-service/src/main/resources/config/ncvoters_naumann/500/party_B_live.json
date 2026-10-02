@@ -1,0 +1,361 @@
+{
+  "version": "17",
+  "columns": [
+    {
+      "index": 0,
+      "name": "PARTY",
+      "role": "PARTY"
+    },
+    {
+      "index": 1,
+      "name": "GLOBAL_ID",
+      "role": "GLOBAL_ID"
+    },
+    {
+      "index": 2,
+      "name": "ID",
+      "role": "ID"
+    },
+    {
+      "index": 3,
+      "name": "first_name",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "UPPERCASE"
+        },
+        {
+          "type": "REMOVE_ACCENTS"
+        },
+        {
+          "type": "REMOVE_SPECIAL_CHARS"
+        },
+        {
+          "type": "TRUNCATE",
+          "from": 0,
+          "to": 30
+        }
+      ],
+      "hashFunctions": 10,
+      "salt": "FIRST_NAME_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 4,
+      "name": "midl_name",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "UPPERCASE"
+        },
+        {
+          "type": "REMOVE_ACCENTS"
+        },
+        {
+          "type": "REMOVE_SPECIAL_CHARS"
+        },
+        {
+          "type": "TRUNCATE",
+          "from": 0,
+          "to": 30
+        }
+      ],
+      "hashFunctions": 10,
+      "salt": "MIDL_NAME_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 5,
+      "name": "last_name",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "UPPERCASE"
+        },
+        {
+          "type": "REMOVE_ACCENTS"
+        },
+        {
+          "type": "REMOVE_SPECIAL_CHARS"
+        },
+        {
+          "type": "TRUNCATE",
+          "from": 0,
+          "to": 30
+        }
+      ],
+      "hashFunctions": 10,
+      "salt": "LAST_NAME_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 6,
+      "name": "age",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "REMOVE_NON_DIGITS"
+        }
+      ],
+      "hashFunctions": 10,
+      "salt": "AGE_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 7,
+      "name": "sex_code",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "UPPERCASE"
+        },
+        {
+          "type": "REMOVE_ACCENTS"
+        },
+        {
+          "type": "REMOVE_SPECIAL_CHARS"
+        },
+        {
+          "type": "TRUNCATE",
+          "from": 0,
+          "to": 30
+        }
+      ],
+      "hashFunctions": 10,
+      "salt": "SEX_CODE_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 8,
+      "name": "race_code",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "UPPERCASE"
+        },
+        {
+          "type": "REMOVE_ACCENTS"
+        },
+        {
+          "type": "REMOVE_SPECIAL_CHARS"
+        },
+        {
+          "type": "TRUNCATE",
+          "from": 0,
+          "to": 30
+        }
+      ],
+      "hashFunctions": 10,
+      "salt": "RACE_CODE_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 9,
+      "name": "res_city_desc",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "UPPERCASE"
+        },
+        {
+          "type": "REMOVE_ACCENTS"
+        },
+        {
+          "type": "REMOVE_SPECIAL_CHARS"
+        },
+        {
+          "type": "TRUNCATE",
+          "from": 0,
+          "to": 30
+        }
+      ],
+      "hashFunctions": 10,
+      "salt": "RES_CITY_DESC_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 10,
+      "name": "street_name",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "UPPERCASE"
+        },
+        {
+          "type": "REMOVE_ACCENTS"
+        },
+        {
+          "type": "REMOVE_SPECIAL_CHARS"
+        },
+        {
+          "type": "TRUNCATE",
+          "from": 0,
+          "to": 30
+        }
+      ],
+      "hashFunctions": 10,
+      "salt": "STREET_NAME_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 11,
+      "name": "house_num",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "REMOVE_NON_DIGITS"
+        }
+      ],
+      "hashFunctions": 10,
+      "salt": "HOUSE_NUM_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 12,
+      "name": "zip_code",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "REMOVE_NON_DIGITS"
+        }
+      ],
+      "hashFunctions": 10,
+      "salt": "ZIP_CODE_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    },
+    {
+      "index": 13,
+      "name": "birth_place",
+      "role": "QID",
+      "preprocessing": [
+        {
+          "type": "TRIM"
+        },
+        {
+          "type": "UPPERCASE"
+        },
+        {
+          "type": "REMOVE_ACCENTS"
+        },
+        {
+          "type": "REMOVE_SPECIAL_CHARS"
+        },
+        {
+          "type": "TRUNCATE",
+          "from": 0,
+          "to": 30
+        }
+      ],
+      "hashFunctions": 10,
+      "salt": "BIRTH_PLACE_",
+      "constantWeightEncoding": {
+        "enabled": false,
+        "minTrigrams": 6,
+        "maxTrigrams": 12
+      },
+      "missingValueTokenCount": 6
+    }
+  ],
+  "bloomFilter": {
+    "length": 1024,
+    "hardeningChain": []
+  },
+  "missingValueHandling": {
+    "enabled": true,
+    "anchorPriority": [
+      "first_name",
+      "last_name",
+      "age",
+      "birth_place",
+      "house_num",
+      "midl_name",
+      "race_code",
+      "res_city_desc",
+      "sex_code",
+      "street_name",
+      "zip_code"
+    ]
+  },
+  "hmacKey": "SMU_NCVOTERS_NAUMANN_TEST_KEY",
+  "mqttBrokerUrl": "tcp://localhost:1883"
+}

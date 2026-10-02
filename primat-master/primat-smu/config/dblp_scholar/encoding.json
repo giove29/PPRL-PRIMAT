@@ -5,8 +5,8 @@
     "hardeningChain": []
   },
   "missingValueHandling": {
-    "enabled": true,
-    "anchorPriority": ["title", "authors", "venue", "year"]
+    "enabled": false,
+    "anchorPriority": ["title", "authors", "year","venue"]
   },
   "hmacKey": "SMU_DBLP_SCHOLAR_TEST_KEY",
   "columns": {

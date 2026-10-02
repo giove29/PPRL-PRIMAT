@@ -2,12 +2,22 @@
   "mqttBrokerUrl": "tcp://localhost:1883",
   "debug": true,
   "parties": [
-    { "name": "org", "duplicateFree": true },
-    { "name": "org1", "duplicateFree": true }
+    {
+      "name": "org",
+      "duplicateFree": true
+    },
+    {
+      "name": "org1",
+      "duplicateFree": true
+    }
   ],
   "clusteringMethod": "CLIP",
   "similarityThreshold": 0.75,
-  "_range": { "from": 0.6, "to": 0.95, "step": 0.05 },
+  "_range": {
+    "from": 0.6,
+    "to": 0.95,
+    "step": 0.05
+  },
   "rbfSize": 1024,
   "blocking": {
     "jaccardLsh": {
