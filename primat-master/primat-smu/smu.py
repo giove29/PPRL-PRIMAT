@@ -114,6 +114,30 @@ def lu_run_status_topic():
     return "primat/smu/lu/run-status"
 
 
+def lu_broker_topic():
+    return "primat/lu/broker"
+
+
+def lu_broker_ack_topic():
+    return "primat/smu/lu/broker-ack"
+
+
+def broker_check_topic(party):
+    return "primat/do/" + party + "/broker-check"
+
+
+def broker_check_ack_topic_wildcard():
+    return "primat/smu/+/broker-check-ack"
+
+
+def lu_broker_check_topic():
+    return "primat/lu/broker-check"
+
+
+def lu_broker_check_ack_topic():
+    return "primat/smu/lu/broker-check-ack"
+
+
 # --------------------------------------------------------------------------
 # Config store (JSON locali, come da requisito "istanziabili e configurabili
 # per adesso con il solito JSON")
@@ -155,6 +179,24 @@ def _parse_broker_url(url):
 
 def _current_broker_host_port():
     return _parse_broker_url(_current_broker_url())
+
+
+def _test_broker_reachable(url):
+    """Connessione usa-e-getta al broker indicato, nessuna publish: verifica
+    che un nuovo mqttBrokerUrl sia raggiungibile PRIMA di spingerlo ai DO,
+    invece di scoprirlo solo quando sono loro a provare a riconnettersi."""
+    host, port = _parse_broker_url(url)
+    client = _new_client("primat-smu-broker-test")
+    try:
+        client.connect(host, port)
+    except OSError:
+        return False
+    finally:
+        try:
+            client.disconnect()
+        except OSError:
+            pass
+    return True
 
 
 def next_version():
@@ -415,7 +457,11 @@ def _publish_and_await_acks(client_id, publish_steps, subscribe_topics, correlat
     client.on_connect = on_connect
     client.on_message = on_message
     host, port = _current_broker_host_port()
-    client.connect(host, port)
+    try:
+        client.connect(host, port)
+    except OSError as e:
+        print("ERRORE: impossibile connettersi al broker MQTT " + host + ":" + str(port) + " - " + str(e))
+        return False, {}
     client.loop_start()
     try:
         time.sleep(0.5)  # lascia atterrare la subscribe prima di pubblicare
@@ -487,7 +533,11 @@ def run_configure_dos():
     client.on_connect = on_connect
     client.on_message = on_message
     host, port = _current_broker_host_port()
-    client.connect(host, port)
+    try:
+        client.connect(host, port)
+    except OSError as e:
+        print("ERRORE: impossibile connettersi al broker MQTT " + host + ":" + str(port) + " - " + str(e))
+        return
     client.loop_start()
     try:
         time.sleep(0.5)  # lascia atterrare la subscribe prima di pubblicare
@@ -540,24 +590,39 @@ def force_bump_version():
 
 
 def migrate_broker():
-    """Migra l'intero fleet (SMU + tutti i DO) verso un nuovo indirizzo MQTT.
+    """Migra l'intero fleet (SMU + tutti i DO + la Linkage Unit) verso un nuovo
+    indirizzo MQTT.
 
     A differenza di una normale 'Configura i DO' (che userebbe sempre il
     broker corrente sia per connettersi sia per il valore pushato - inutile
     qui: l'annuncio "spostati sul nuovo broker" deve viaggiare sul broker
-    ATTUALE, dove i DO sono ancora connessi, non su quello nuovo), questa
+    ATTUALE, dove DO e LU sono ancora connessi, non su quello nuovo), questa
     funzione si connette sul vecchio broker, pusha a tutte le party il nuovo
     valore (override esplicito - config/broker.json resta invariato finche'
-    non arriva conferma), attende tutti gli ack, e SOLO al 100% di successo
-    aggiorna config/broker.json - cosi' ogni operazione successiva (inclusa
-    la prossima 'Configura i DO') punta gia' al broker giusto, lo stesso su
-    cui i DO si sono nel frattempo spostati (vedi DataOwnerService.handleConfigPush,
-    verifica-poi-switch).
+    non arriva conferma) e, sullo stesso giro, pusha lo stesso nuovo valore
+    anche alla Linkage Unit su un canale dedicato (primat/lu/broker, separato
+    dal protocollo di run su primat/lu/config: una migrazione broker non deve
+    far partire un run). Attende tutti gli ack (DO + LU), e SOLO al 100% di
+    successo aggiorna config/broker.json - cosi' ogni operazione successiva
+    (inclusa la prossima 'Configura i DO') punta gia' al broker giusto, lo
+    stesso su cui DO e LU si sono nel frattempo spostati (stesso pattern
+    verifica-poi-switch sia lato DataOwnerService.handleConfigPush sia lato
+    LinkageUnitOrchestrator.handleLuBrokerPush).
 
-    Limite noto e accettato: se solo una parte dei DO conferma, quelli gia'
-    spostati restano raggiungibili solo sul nuovo broker mentre la SMU e gli
-    altri DO restano sul vecchio - nessuna semantica distribuita completa,
-    richiede intervento manuale per riallineare i DO rimasti indietro.
+    Prima del commit vero e proprio, una fase di pre-flight (stateless, nessun
+    file toccato) chiede a tutti i destinatari di provare la connessione al
+    nuovo broker e richiuderla subito, rispondendo pronto/errore sul broker
+    ATTUALE: solo se il 100% risponde pronto si procede con il commit sopra
+    descritto - questo elimina il caso comune di un singolo destinatario
+    irraggiungibile scoperto solo a commit gia' iniziato (nessuno switcha,
+    nessun file viene toccato, si riporta subito l'elenco di chi ha fallito).
+
+    Limite noto e accettato: resta una finestra residua tra pre-flight e
+    commit (il broker potrebbe cadere nei pochi istanti tra le due fasi); se
+    questo accade, vale ancora quanto sopra - solo una parte dei destinatari
+    conferma il commit, quelli gia' spostati restano raggiungibili solo sul
+    nuovo broker mentre la SMU e gli altri restano sul vecchio, richiede
+    intervento manuale per riallineare chi e' rimasto indietro.
     """
     parties = discovered_parties()
     if not parties:
@@ -575,6 +640,45 @@ def migrate_broker():
         print("ERRORE: URL non valido, atteso il formato 'tcp://host:porta'.")
         return
 
+    print("Verifica raggiungibilita' di " + new_url + " (lato SMU)...")
+    if not _test_broker_reachable(new_url):
+        print("ERRORE: impossibile stabilire la connessione sul nuovo URL (" + new_url
+              + ") - migrazione annullata, resta " + old_url)
+        return
+
+    print("Pre-flight: verifica raggiungibilita' di " + new_url + " lato DO/LU (nessuna modifica persistita)...")
+    check_steps = [(broker_check_topic(party), {"mqttBrokerUrl": new_url}) for party in parties]
+    check_steps.append((lu_broker_check_topic(), {"mqttBrokerUrl": new_url}))
+    check_expected_keys = set(parties) | {"LU"}
+
+    def correlate_check(topic, payload):
+        if topic == lu_broker_check_ack_topic():
+            return "LU" if payload.get("party") == "LU" else None
+        party = payload.get("party")
+        return party if party in parties else None
+
+    check_completed, checks = _publish_and_await_acks(
+        "primat-smu-migrate-broker-preflight", check_steps,
+        [broker_check_ack_topic_wildcard(), lu_broker_check_ack_topic()],
+        correlate_check, check_expected_keys, ACK_TIMEOUT_SECONDS)
+
+    expected_labels = list(parties) + ["LU"]
+    if not check_completed:
+        missing = [label for label in expected_labels if label not in checks]
+        print("ERRORE: pre-flight fallito, timeout in attesa di: " + ", ".join(missing)
+              + " - nessuna modifica effettuata, resta " + old_url)
+        return
+
+    check_errors = {label: payload for label, (_, payload) in checks.items() if payload.get("status") != "OK"}
+    if check_errors:
+        print("ERRORE: pre-flight fallito, broker non raggiungibile da:")
+        for label, payload in check_errors.items():
+            print("  [" + label + "] " + str(payload.get("detail")))
+        print("Nessuna modifica effettuata, resta " + old_url)
+        return
+
+    print("Pre-flight superato da tutti (" + ", ".join(expected_labels) + "). Procedo con la migrazione...")
+
     version = next_version()
     print("Migrazione broker v" + version + " (" + old_url + " -> " + new_url + "), party coinvolte: "
           + ", ".join(parties))
@@ -588,27 +692,34 @@ def migrate_broker():
             return
         payload = {"version": version, "configJson": json.dumps(config_fragment)}
         publish_steps.append((config_topic(party), payload))
+    publish_steps.append((lu_broker_topic(), {"mqttBrokerUrl": new_url}))
+
+    expected_keys = set(parties) | {"LU"}
 
     def correlate(topic, payload):
+        if topic == lu_broker_ack_topic():
+            return "LU" if payload.get("party") == "LU" else None
         party = payload.get("party")
         return party if party in parties and payload.get("version") == version else None
 
     completed, acks = _publish_and_await_acks(
-        "primat-smu-migrate-broker", publish_steps, [config_ack_topic_wildcard()],
-        correlate, set(parties), ACK_TIMEOUT_SECONDS)
+        "primat-smu-migrate-broker", publish_steps,
+        [config_ack_topic_wildcard(), lu_broker_ack_topic()],
+        correlate, expected_keys, ACK_TIMEOUT_SECONDS)
 
+    expected_labels = list(parties) + ["LU"]
     if not completed:
-        missing = [p for p in parties if p not in acks]
+        missing = [label for label in expected_labels if label not in acks]
         print("ERRORE: timeout in attesa degli ack di: " + ", ".join(missing)
               + " - config/broker.json NON aggiornato, resta " + old_url)
         return
 
-    errors = {p: payload for p, (_, payload) in acks.items() if payload.get("status") != "OK"}
+    errors = {label: payload for label, (_, payload) in acks.items() if payload.get("status") != "OK"}
     if errors:
-        print("ERRORE: migrazione rifiutata da almeno un DO - config/broker.json NON aggiornato, resta "
+        print("ERRORE: migrazione rifiutata da almeno un destinatario - config/broker.json NON aggiornato, resta "
               + old_url + ":")
-        for party, payload in errors.items():
-            print("  [" + party + "] " + str(payload.get("detail")))
+        for label, payload in errors.items():
+            print("  [" + label + "] " + str(payload.get("detail")))
         return
 
     broker_state = _load_json(BROKER_PATH)
@@ -619,8 +730,8 @@ def migrate_broker():
     state["lastAppliedVersion"] = version
     with open(STATE_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2)
-    print("Migrazione completata su tutti i DO (" + ", ".join(parties) + "): config/broker.json aggiornato a "
-          + new_url)
+    print("Migrazione completata su tutti i DO (" + ", ".join(parties) + ") e sulla Linkage Unit: "
+          "config/broker.json aggiornato a " + new_url)
 
 
 # --------------------------------------------------------------------------

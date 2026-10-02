@@ -55,6 +55,8 @@ import de.uni_leipzig.dbs.pprl.primat.lu.service.config.LinkageUnitConfigLoader;
 import de.uni_leipzig.dbs.pprl.primat.lu.service.config.SimilarityThresholdSpec;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttClientWrapper;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttTopics;
+import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.BrokerCheckRequest;
+import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.LuBrokerPush;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.LuConfigPush;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.RbfCodec;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.RbfPayload;
@@ -80,10 +82,15 @@ public class LinkageUnitOrchestrator {
 
 	private final LinkageUnitConfig config;
 	private final Path configPath;
-	private final MqttClientWrapper client;
+	/** Non piu' final: sostituito da {@link #handleLuBrokerPush} dopo un hot-reconnect verso un nuovo {@code mqttBrokerUrl} (mirror {@code DataOwnerService.client}). */
+	private volatile MqttClientWrapper client;
 	private final Gson gson = new Gson();
 	/** Solo per la scrittura del file di config su disco (leggibile); i payload MQTT restano compatti su {@link #gson}. */
 	private final Gson fileGson = new GsonBuilder().setPrettyPrinting().create();
+	/** Client id MQTT fisso della Linkage Unit, riusato anche per il client candidato in {@link #handleLuBrokerPush}. */
+	private static final String CLIENT_ID = "linkage-unit-orchestrator";
+	/** Timeout di verifica di un nuovo broker prima di accettarne la migrazione, mirror {@code DataOwnerService.BROKER_SWITCH_VERIFY_TIMEOUT_SECONDS}. */
+	private static final long BROKER_SWITCH_VERIFY_TIMEOUT_SECONDS = 15L;
 	/**
 	 * Esegue {@link #handleLuConfigPush} fuori dal thread di callback di Paho,
 	 * stesso motivo/pattern di {@code DataOwnerService.commandExecutor}: un
@@ -93,6 +100,17 @@ public class LinkageUnitOrchestrator {
 	 */
 	private final ExecutorService runExecutor = Executors.newSingleThreadExecutor(runnable -> {
 		final Thread thread = new Thread(runnable, "lu-run-worker");
+		thread.setDaemon(true);
+		return thread;
+	});
+	/**
+	 * Esegue {@link #handleLuBrokerPush} su un executor dedicato, separato da
+	 * {@link #runExecutor}: una migrazione di broker non deve restare in coda
+	 * dietro un run in corso, mirror della separazione
+	 * {@code commandExecutor}/{@code configExecutor} lato {@code DataOwnerService}.
+	 */
+	private final ExecutorService brokerExecutor = Executors.newSingleThreadExecutor(runnable -> {
+		final Thread thread = new Thread(runnable, "lu-broker-worker");
 		thread.setDaemon(true);
 		return thread;
 	});
@@ -110,7 +128,7 @@ public class LinkageUnitOrchestrator {
 	public LinkageUnitOrchestrator(LinkageUnitConfig config, Path configPath) throws Exception {
 		this.config = config;
 		this.configPath = configPath;
-		this.client = new MqttClientWrapper(config.getMqttBrokerUrl(), "linkage-unit-orchestrator");
+		this.client = new MqttClientWrapper(config.getMqttBrokerUrl(), CLIENT_ID);
 	}
 
 	/**
@@ -149,12 +167,33 @@ public class LinkageUnitOrchestrator {
 	 */
 	public void start() throws Exception {
 		client.connect(config.getBrokerConnectTimeoutSeconds());
-		client.subscribe(MqttTopics.luConfigTopic(), (topic, message) -> {
+		subscribeAll(client);
+		System.out.println("Linkage Unit in ascolto su " + MqttTopics.luConfigTopic() + " e "
+				+ MqttTopics.luBrokerTopic());
+	}
+
+	/**
+	 * Sottoscrive i 2 topic della Linkage Unit sul client dato — estratto da
+	 * {@link #start()} per essere riusabile anche dopo un hot-reconnect verso
+	 * un nuovo {@code mqttBrokerUrl} (vedi {@link #handleLuBrokerPush}), mirror
+	 * di {@code DataOwnerService.subscribeAll}.
+	 */
+	private void subscribeAll(MqttClientWrapper target) throws MqttException {
+		target.subscribe(MqttTopics.luConfigTopic(), (topic, message) -> {
 			final LuConfigPush push = gson.fromJson(new String(message.getPayload(), StandardCharsets.UTF_8),
 					LuConfigPush.class);
 			runExecutor.submit(() -> handleLuConfigPush(push));
 		});
-		System.out.println("Linkage Unit in ascolto su " + MqttTopics.luConfigTopic());
+		target.subscribe(MqttTopics.luBrokerTopic(), (topic, message) -> {
+			final LuBrokerPush push = gson.fromJson(new String(message.getPayload(), StandardCharsets.UTF_8),
+					LuBrokerPush.class);
+			brokerExecutor.submit(() -> handleLuBrokerPush(push));
+		});
+		target.subscribe(MqttTopics.luBrokerCheckTopic(), (topic, message) -> {
+			final BrokerCheckRequest req = gson.fromJson(new String(message.getPayload(), StandardCharsets.UTF_8),
+					BrokerCheckRequest.class);
+			brokerExecutor.submit(() -> handleLuBrokerCheck(req));
+		});
 	}
 
 	/**
@@ -234,6 +273,124 @@ public class LinkageUnitOrchestrator {
 			System.err.println("run " + runId + ": errore ->");
 			e.printStackTrace();
 			publishLuStatusQuietly(MqttTopics.luRunStatusTopic(), runId, "ERROR", e.getMessage());
+		}
+	}
+
+	/**
+	 * Gestisce una {@link LuBrokerPush} ricevuta dalla SMU su {@link
+	 * MqttTopics#luBrokerTopic()} (canale dedicato, separato dal protocollo di
+	 * run su {@link MqttTopics#luConfigTopic()}): mirror esatto di {@code
+	 * DataOwnerService.handleConfigPush} per la parte broker. Scrive il nuovo
+	 * {@code mqttBrokerUrl} su un file temporaneo sibling di {@link
+	 * #configPath}, valida l'intero file ricaricandolo con {@link
+	 * LinkageUnitConfigLoader#load(Path)}; se il broker e' davvero cambiato, si
+	 * connette al nuovo con un timeout limitato ({@link
+	 * #BROKER_SWITCH_VERIFY_TIMEOUT_SECONDS}) PRIMA di accettare qualunque
+	 * cosa (irraggiungibile = push rifiutata, file/config/client invariati).
+	 * Se raggiungibile: file sostituito atomicamente, config in memoria
+	 * aggiornata, ack di successo pubblicato sul client VECCHIO, e solo a quel
+	 * punto il client attivo passa al nuovo (disconnessione del vecchio +
+	 * nuova sottoscrizione). Qualunque fallimento successivo alla verifica
+	 * lascia comunque intatti file/config/client in uso.
+	 */
+	private void handleLuBrokerPush(LuBrokerPush push) {
+		final String newUrl = push.getMqttBrokerUrl();
+		System.out.println("push di broker MQTT ricevuta dalla SMU: " + newUrl);
+		// Catturato subito: l'ack di questa push esce sempre su questo client, mai
+		// su this.client, che potrebbe cambiare prima della fine del metodo.
+		final MqttClientWrapper ackClient = this.client;
+		final Path tempPath = configPath.resolveSibling(configPath.getFileName() + ".tmp");
+		MqttClientWrapper candidateClient = null;
+		try {
+			if (newUrl == null || newUrl.isBlank()) {
+				throw new LinkageUnitConfigException("mqttBrokerUrl mancante o vuoto nella push");
+			}
+			final JsonObject current = JsonParser
+					.parseString(Files.readString(configPath, StandardCharsets.UTF_8)).getAsJsonObject();
+			current.addProperty("mqttBrokerUrl", newUrl);
+			Files.writeString(tempPath, fileGson.toJson(current), StandardCharsets.UTF_8);
+
+			// Valida l'intero file (non solo il campo appena cambiato), stesso
+			// principio di handleLuConfigPush per rbfSize.
+			final LinkageUnitConfig reloaded = LinkageUnitConfigLoader.load(tempPath);
+
+			final String oldUrl = config.getMqttBrokerUrl();
+			final boolean brokerChanged = !reloaded.getMqttBrokerUrl().equals(oldUrl);
+			if (brokerChanged) {
+				candidateClient = new MqttClientWrapper(reloaded.getMqttBrokerUrl(), CLIENT_ID);
+				candidateClient.connect(BROKER_SWITCH_VERIFY_TIMEOUT_SECONDS);
+			}
+
+			Files.move(tempPath, configPath, StandardCopyOption.REPLACE_EXISTING);
+			config.setMqttBrokerUrl(reloaded.getMqttBrokerUrl());
+			ackClient.publish(MqttTopics.luBrokerAckTopic(),
+					gson.toJson(new StatusMessage(null, "LU", "OK", "mqttBrokerUrl aggiornato")));
+			System.out.println("configurazione broker applicata con successo");
+			System.out.println(config.describe());
+
+			if (brokerChanged) {
+				this.client = candidateClient;
+				subscribeAll(candidateClient);
+				ackClient.disconnect();
+				System.out.println("passata dal broker " + oldUrl + " al nuovo broker "
+						+ reloaded.getMqttBrokerUrl());
+			}
+		} catch (IOException | LinkageUnitConfigException | MqttException | RuntimeException e) {
+			deleteQuietly(tempPath);
+			if (candidateClient != null) {
+				try {
+					candidateClient.disconnect();
+				} catch (Exception ignored) {
+					// best-effort: la push e' comunque rifiutata, this.client resta quello
+					// corretto (ackClient), un client candidato mai installato non ha
+					// alcun effetto osservabile se non viene disconnesso correttamente.
+				}
+			}
+			System.err.println("push di broker MQTT rifiutata: " + e.getMessage());
+			try {
+				ackClient.publish(MqttTopics.luBrokerAckTopic(),
+						gson.toJson(new StatusMessage(null, "LU", "ERROR", e.getMessage())));
+			} catch (MqttException publishFailure) {
+				System.err.println("impossibile pubblicare l'ack di errore: " + publishFailure.getMessage());
+			}
+		}
+	}
+
+	/**
+	 * Gestisce una {@link BrokerCheckRequest} (pre-flight, fase 0 di una
+	 * migrazione broker): apre una connessione di prova usa-e-getta verso
+	 * l'URL indicato (client id diverso da {@link #CLIENT_ID}, cosi' non lo
+	 * scalza dal broker), la richiude subito in ogni caso, e pubblica l'esito
+	 * **sul client principale** (mai toccato da questo metodo). Nessuna
+	 * scrittura su file, nessuna modifica a {@link #config}/{@link #client}:
+	 * un pre-flight fallito non lascia alcun side-effect da ripulire. Mirror
+	 * di {@code DataOwnerService.handleBrokerCheck}.
+	 */
+	private void handleLuBrokerCheck(BrokerCheckRequest req) {
+		final String url = req.getMqttBrokerUrl();
+		System.out.println("pre-flight richiesto per " + url + "...");
+		String status = "OK";
+		String detail = "raggiungibile";
+		MqttClientWrapper probe = null;
+		try {
+			probe = new MqttClientWrapper(url, CLIENT_ID + "-probe");
+			probe.connect(BROKER_SWITCH_VERIFY_TIMEOUT_SECONDS);
+		} catch (MqttException | RuntimeException e) {
+			status = "ERROR";
+			detail = e.getMessage();
+		} finally {
+			if (probe != null) {
+				try {
+					probe.disconnect();
+				} catch (Exception ignored) {
+					// best-effort: era solo una connessione di prova, mai installata.
+				}
+			}
+		}
+		try {
+			client.publish(MqttTopics.luBrokerCheckAckTopic(), gson.toJson(new StatusMessage(null, "LU", status, detail)));
+		} catch (MqttException e) {
+			System.err.println("impossibile pubblicare l'esito del pre-flight: " + e.getMessage());
 		}
 	}
 

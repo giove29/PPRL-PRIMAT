@@ -31,6 +31,7 @@ import de.uni_leipzig.dbs.pprl.primat.dataowner.service.io.JdbcRecordSource;
 import de.uni_leipzig.dbs.pprl.primat.dataowner.service.io.RecordSource;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttClientWrapper;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.MqttTopics;
+import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.BrokerCheckRequest;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.CheckVersionCommand;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.ConfigAck;
 import de.uni_leipzig.dbs.pprl.primat.mqtt.dto.ConfigPush;
@@ -169,6 +170,11 @@ public class DataOwnerService {
 			final ConfigPush push = gson.fromJson(new String(message.getPayload(), StandardCharsets.UTF_8),
 					ConfigPush.class);
 			configExecutor.submit(() -> handleConfigPush(push));
+		});
+		target.subscribe(MqttTopics.brokerCheckTopic(config.getParty()), (topic, message) -> {
+			final BrokerCheckRequest req = gson.fromJson(new String(message.getPayload(), StandardCharsets.UTF_8),
+					BrokerCheckRequest.class);
+			configExecutor.submit(() -> handleBrokerCheck(req));
 		});
 		target.subscribe(MqttTopics.checkVersionTopic(config.getParty()), (topic, message) -> {
 			// Lettura volatile + publish, O(1): nessun accesso a disco/pipeline che
@@ -333,6 +339,44 @@ public class DataOwnerService {
 				System.err.println("[" + party + "] impossibile pubblicare l'ack di errore: "
 						+ publishFailure.getMessage());
 			}
+		}
+	}
+
+	/**
+	 * Gestisce una {@link BrokerCheckRequest} (pre-flight, fase 0 di una
+	 * migrazione broker): apre una connessione di prova usa-e-getta verso
+	 * l'URL indicato (client id diverso da quello principale, cosi' non lo
+	 * scalza dal broker), la richiude subito in ogni caso, e pubblica l'esito
+	 * **sul client principale** (mai toccato da questo metodo). Nessuna
+	 * scrittura su file, nessuna modifica a {@link #config}/{@link #client}:
+	 * un pre-flight fallito non lascia alcun side-effect da ripulire.
+	 */
+	private void handleBrokerCheck(BrokerCheckRequest req) {
+		final String party = config.getParty();
+		final String url = req.getMqttBrokerUrl();
+		System.out.println("[" + party + "] pre-flight richiesto per " + url + "...");
+		String status = "OK";
+		String detail = "raggiungibile";
+		MqttClientWrapper probe = null;
+		try {
+			probe = new MqttClientWrapper(url, config.getMqttClientId() + "-probe");
+			probe.connect(BROKER_SWITCH_VERIFY_TIMEOUT_SECONDS);
+		} catch (MqttException | RuntimeException e) {
+			status = "ERROR";
+			detail = e.getMessage();
+		} finally {
+			if (probe != null) {
+				try {
+					probe.disconnect();
+				} catch (Exception ignored) {
+					// best-effort: era solo una connessione di prova, mai installata.
+				}
+			}
+		}
+		try {
+			client.publish(MqttTopics.brokerCheckAckTopic(party), gson.toJson(new StatusMessage(null, party, status, detail)));
+		} catch (MqttException e) {
+			System.err.println("[" + party + "] impossibile pubblicare l'esito del pre-flight: " + e.getMessage());
 		}
 	}
 

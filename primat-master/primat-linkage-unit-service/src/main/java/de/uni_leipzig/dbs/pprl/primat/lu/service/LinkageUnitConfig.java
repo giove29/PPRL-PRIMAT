@@ -35,7 +35,7 @@ public class LinkageUnitConfig {
 	private final int lshKeySize;
 	private final int lshKeys;
 	private final long lshSeed;
-	private final String mqttBrokerUrl;
+	private String mqttBrokerUrl;
 	private final long brokerConnectTimeoutSeconds;
 	private final long rbfCollectionTimeoutSeconds;
 	private final long rbfRepublishIntervalSeconds;
@@ -160,6 +160,16 @@ public class LinkageUnitConfig {
 
 	public String getMqttBrokerUrl() {
 		return mqttBrokerUrl;
+	}
+
+	/**
+	 * Riconfigura a caldo il broker MQTT, sovrascrivendo il valore caricato dal
+	 * JSON locale: usato da {@code LinkageUnitOrchestrator#handleLuBrokerPush}
+	 * dopo che il nuovo broker e' stato verificato raggiungibile e il file
+	 * locale e' gia' stato aggiornato — mirror esatto di {@link #setRbfSize}.
+	 */
+	public void setMqttBrokerUrl(String mqttBrokerUrl) {
+		this.mqttBrokerUrl = mqttBrokerUrl;
 	}
 
 	public long getBrokerConnectTimeoutSeconds() {

@@ -170,4 +170,81 @@ public final class MqttTopics {
 	public static String luRunStatusTopic() {
 		return "primat/smu/lu/run-status";
 	}
+
+	/**
+	 * Topic su cui la Linkage Unit resta in ascolto per una push dedicata di
+	 * {@code mqttBrokerUrl} dalla SMU — canale separato da {@link #luConfigTopic()},
+	 * che resta legato all'avvio di un run vero e proprio. Mirror lato LU di
+	 * {@link #configTopic(String)} lato Data Owner (riconfigurazione
+	 * indipendente dal comando di avvio).
+	 *
+	 * @return topic "primat/lu/broker"
+	 */
+	public static String luBrokerTopic() {
+		return "primat/lu/broker";
+	}
+
+	/**
+	 * Topic su cui la Linkage Unit conferma o rifiuta la push di
+	 * {@code mqttBrokerUrl} ricevuta su {@link #luBrokerTopic()}.
+	 *
+	 * @return topic "primat/smu/lu/broker-ack"
+	 */
+	public static String luBrokerAckTopic() {
+		return "primat/smu/lu/broker-ack";
+	}
+
+	/**
+	 * Topic su cui un Data Owner resta in ascolto per una richiesta di
+	 * pre-flight ("questo broker e' raggiungibile?") dalla SMU, PRIMA di una
+	 * migrazione reale su {@link #configTopic(String)}. Nessuna persistenza/
+	 * switch avviene a fronte di questo messaggio.
+	 *
+	 * @param party nome del party (es. "A")
+	 * @return topic "primat/do/{party}/broker-check"
+	 */
+	public static String brokerCheckTopic(String party) {
+		return "primat/do/" + party + "/broker-check";
+	}
+
+	/**
+	 * Topic su cui un Data Owner risponde a una richiesta di pre-flight.
+	 *
+	 * @param party nome del party (es. "A")
+	 * @return topic "primat/smu/{party}/broker-check-ack"
+	 */
+	public static String brokerCheckAckTopic(String party) {
+		return "primat/smu/" + party + "/broker-check-ack";
+	}
+
+	/**
+	 * Topic filter usato dalla SMU per sottoscriversi alle risposte di
+	 * pre-flight di tutti i Data Owner in un solo colpo.
+	 *
+	 * @return topic filter "primat/smu/+/broker-check-ack"
+	 */
+	public static String brokerCheckAckTopicWildcard() {
+		return "primat/smu/+/broker-check-ack";
+	}
+
+	/**
+	 * Topic su cui la Linkage Unit resta in ascolto per una richiesta di
+	 * pre-flight dalla SMU, PRIMA di una migrazione reale su
+	 * {@link #luBrokerTopic()}. Mirror di {@link #brokerCheckTopic(String)}
+	 * lato Data Owner.
+	 *
+	 * @return topic "primat/lu/broker-check"
+	 */
+	public static String luBrokerCheckTopic() {
+		return "primat/lu/broker-check";
+	}
+
+	/**
+	 * Topic su cui la Linkage Unit risponde a una richiesta di pre-flight.
+	 *
+	 * @return topic "primat/smu/lu/broker-check-ack"
+	 */
+	public static String luBrokerCheckAckTopic() {
+		return "primat/smu/lu/broker-check-ack";
+	}
 }
